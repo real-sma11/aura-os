@@ -2,7 +2,13 @@ import type { StateCreator } from "zustand";
 import { api } from "../../api/client";
 import { isAuraCaptureSessionActive } from "../../lib/screenshot-bridge";
 import { clearLastNote } from "../../utils/storage";
-import { emptyProjectTree, slugify, type NotesProjectTree } from "./notes-utils";
+import {
+  emptyProjectTree,
+  makeNoteKey,
+  slugify,
+  type NotesProjectTree,
+} from "./notes-utils";
+import type { Note } from "../../shared/api/notes";
 import type { NotesStore } from "./notes-store";
 
 export interface TreeSlice {
@@ -31,6 +37,18 @@ export interface TreeSlice {
   ) => Promise<void>;
   /** Patch a note's title in the loaded tree without a full reload. */
   patchNoteTitle: (projectId: string, noteId: string, title: string) => void;
+  /**
+   * Patch arbitrary metadata fields onto a note in BOTH the loaded tree
+   * and the per-note content cache so consumers reading either source
+   * (e.g. the nav status badge from the tree, the info panel from the
+   * content cache) reflect the change without a full reload. Used after
+   * blog-field edits and publish/unpublish transitions.
+   */
+  patchNoteMeta: (
+    projectId: string,
+    noteId: string,
+    patch: Partial<Note>,
+  ) => void;
 }
 
 /**
@@ -182,6 +200,34 @@ export const createTreeSlice: StateCreator<NotesStore, [], [], TreeSlice> = (
       return {
         trees: { ...state.trees, [projectId]: { ...tree, notes } },
       };
+    });
+  },
+
+  patchNoteMeta: (projectId, noteId, patch) => {
+    set((state) => {
+      const tree = state.trees[projectId];
+      let trees = state.trees;
+      if (tree) {
+        const notes = tree.notes.map((n) =>
+          n.id === noteId ? { ...n, ...patch } : n,
+        );
+        trees = { ...state.trees, [projectId]: { ...tree, notes } };
+      }
+
+      const key = makeNoteKey(projectId, noteId);
+      const entry = state.contentCache[key];
+      let contentCache = state.contentCache;
+      if (entry) {
+        contentCache = {
+          ...state.contentCache,
+          [key]: { ...entry, note: { ...entry.note, ...patch } },
+        };
+      }
+
+      if (trees === state.trees && contentCache === state.contentCache) {
+        return state;
+      }
+      return { trees, contentCache };
     });
   },
 });

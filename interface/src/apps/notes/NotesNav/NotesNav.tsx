@@ -9,6 +9,7 @@ import {
   useLeftMenuProjectReorder,
 } from "../../../features/left-menu";
 import { useProjectsListStore } from "../../../stores/projects-list-store";
+import { useIsSysAdmin } from "../../../stores/auth-store";
 import { useSidebarSearch } from "../../../hooks/use-sidebar-search";
 import { ProjectsPlusButton } from "../../../components/ProjectsPlusButton/ProjectsPlusButton";
 import { ExplorerContextMenu } from "../../../components/ProjectList/ExplorerContextMenu";
@@ -30,6 +31,24 @@ import {
 import { NotesEntryContextMenu } from "../NotesEntryContextMenu";
 import { NotesEntryModals } from "../NotesEntryModals";
 import { useNotesContextMenu } from "./useNotesContextMenu";
+import { buildAuraBlogProject, isAuraBlogProject } from "../aura-blog";
+
+/**
+ * Draft/Published pill shown as the note's left-nav suffix inside the
+ * aura-blog CMS project. Normal notes get no badge.
+ */
+function blogStatusSuffix(status: string | null | undefined): ExplorerNode["suffix"] {
+  const published = status === "published";
+  return (
+    <span
+      className={`${styles.statusBadge} ${
+        published ? styles.statusPublished : styles.statusDraft
+      }`}
+    >
+      {published ? "Published" : "Draft"}
+    </span>
+  );
+}
 
 function hoverPlusSuffix(onClick: () => void, title: string): ExplorerNode["suffix"] {
   return (
@@ -72,6 +91,7 @@ function buildFolderChildren(
   notes: Note[],
   titleOverrides: Record<string, string>,
   onCreateInFolder: (folderId: string) => void,
+  isBlogProject: boolean,
 ): ExplorerNode[] {
   const childFolders = folders
     .filter((f) => (f.parentId ?? null) === parentId)
@@ -103,6 +123,7 @@ function buildFolderChildren(
         notes,
         titleOverrides,
         onCreateInFolder,
+        isBlogProject,
       ),
     }));
 
@@ -129,6 +150,7 @@ function buildFolderChildren(
       label,
       icon: <FileText size={14} aria-hidden="true" />,
       metadata: { type: "note" },
+      ...(isBlogProject ? { suffix: blogStatusSuffix(note.status) } : {}),
     }));
 
   return [...childFolders, ...childNotes];
@@ -140,7 +162,8 @@ interface NotesNavProps {
 
 export function NotesNav({ onCreateNote }: NotesNavProps = {}) {
   const navigate = useNavigate();
-  const projects = useProjectsListStore((s) => s.projects);
+  const isSysAdmin = useIsSysAdmin();
+  const storeProjects = useProjectsListStore((s) => s.projects);
   const loadingProjects = useProjectsListStore((s) => s.loadingProjects);
   const refreshProjects = useProjectsListStore((s) => s.refreshProjects);
   const openNewProjectModal = useProjectsListStore((s) => s.openNewProjectModal);
@@ -153,6 +176,18 @@ export function NotesNav({ onCreateNote }: NotesNavProps = {}) {
   const activeNoteId = useNotesStore((s) => s.activeNoteId);
   const activeProjectId = useNotesStore((s) => s.activeProjectId);
 
+  // The aura-blog CMS project is virtual: it is prepended to the rendered
+  // list for sys admins only (never persisted to the projects store), so
+  // non-admins never see it. The backend independently gates writes.
+  const projects = useMemo(() => {
+    if (!isSysAdmin) return storeProjects;
+    if (storeProjects.some((p) => isAuraBlogProject(p.project_id))) {
+      return storeProjects;
+    }
+    const orgId = storeProjects[0]?.org_id ?? "";
+    return [buildAuraBlogProject(orgId), ...storeProjects];
+  }, [storeProjects, isSysAdmin]);
+
   const { query: sidebarQuery, setAction } = useSidebarSearch("notes");
 
   const projectActions = useProjectListActions();
@@ -163,11 +198,11 @@ export function NotesNav({ onCreateNote }: NotesNavProps = {}) {
   const notesMenu = useNotesContextMenu({ projectActions, projectMap });
 
   useEffect(() => {
-    if (!refreshedOnce.current && !loadingProjects && projects.length === 0) {
+    if (!refreshedOnce.current && !loadingProjects && storeProjects.length === 0) {
       refreshedOnce.current = true;
       void refreshProjects();
     }
-  }, [projects.length, loadingProjects, refreshProjects]);
+  }, [storeProjects.length, loadingProjects, refreshProjects]);
 
   useEffect(() => {
     for (const project of projects) {
@@ -203,6 +238,7 @@ export function NotesNav({ onCreateNote }: NotesNavProps = {}) {
   const data = useMemo<ExplorerNode[]>(() => {
     return projects.map((project) => {
       const projectId = project.project_id;
+      const isBlogProject = isAuraBlogProject(projectId);
       const tree: NotesProjectTree | undefined = trees[projectId];
       const children = tree
         ? buildFolderChildren(
@@ -212,6 +248,7 @@ export function NotesNav({ onCreateNote }: NotesNavProps = {}) {
             tree.notes,
             tree.titleOverrides,
             (folderId) => handleCreateNote(projectId, folderId),
+            isBlogProject,
           )
         : [];
       return {

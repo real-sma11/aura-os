@@ -1,7 +1,10 @@
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { OverlayScrollbar } from "../../../components/OverlayScrollbar";
+import { api } from "../../../api/client";
 import { useAuthStore } from "../../../stores/auth-store";
-import { useActiveNote } from "../../../stores/notes-store";
+import { useActiveNote, useNotesStore } from "../../../stores/notes-store";
+import type { Note, NoteStatus } from "../../../shared/api/notes";
+import { isAuraBlogProject } from "../aura-blog";
 import styles from "./NotesInfoPanel.module.css";
 
 function formatDate(iso?: string | null): string {
@@ -52,6 +55,172 @@ function formatStatus(status?: string | null): string {
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
+/**
+ * Editable CMS controls shown in the Info panel when the active note
+ * lives in the reserved aura-blog project. Lets sys admins edit blog
+ * metadata and publish/unpublish. The backend independently enforces
+ * that only sys admins may write to this project. Local input state is
+ * keyed on `noteId` so switching notes (or a store refresh) re-seeds it.
+ */
+function BlogCmsSection({
+  projectId,
+  noteId,
+  meta,
+}: {
+  projectId: string;
+  noteId: string;
+  meta: Note;
+}) {
+  const patchNoteMeta = useNotesStore((s) => s.patchNoteMeta);
+
+  const [blogType, setBlogType] = useState(meta.blogType ?? "");
+  const [excerpt, setExcerpt] = useState(meta.excerpt ?? "");
+  const [heroImageUrl, setHeroImageUrl] = useState(meta.heroImageUrl ?? "");
+  const [readTime, setReadTime] = useState(
+    meta.readTimeMinutes != null ? String(meta.readTimeMinutes) : "",
+  );
+  const [busy, setBusy] = useState(false);
+
+  // Re-seed the form whenever the active note changes (or its metadata is
+  // refreshed in the store), so the inputs always reflect the latest row.
+  useEffect(() => {
+    setBlogType(meta.blogType ?? "");
+    setExcerpt(meta.excerpt ?? "");
+    setHeroImageUrl(meta.heroImageUrl ?? "");
+    setReadTime(meta.readTimeMinutes != null ? String(meta.readTimeMinutes) : "");
+  }, [noteId, meta.blogType, meta.excerpt, meta.heroImageUrl, meta.readTimeMinutes]);
+
+  const isPublished = meta.status === "published";
+
+  /** Persist a single blog field on blur, skipping no-op writes. */
+  async function commitField(
+    patch: Parameters<typeof api.notes.updateNote>[2],
+  ): Promise<void> {
+    try {
+      const updated = await api.notes.updateNote(projectId, noteId, patch);
+      patchNoteMeta(projectId, noteId, updated);
+    } catch (err) {
+      console.warn("update blog field failed", err);
+    }
+  }
+
+  async function transition(status: NoteStatus): Promise<void> {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const updated = await api.notes.transitionNote(projectId, noteId, status);
+      patchNoteMeta(projectId, noteId, updated);
+    } catch (err) {
+      console.warn("transition note failed", err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className={styles.cmsSection}>
+      <div className={styles.cmsHeading}>Blog post</div>
+
+      <div className={styles.infoRow}>
+        <span className={styles.infoLabel}>Status</span>
+        <div className={styles.cmsStatusRow}>
+          <span
+            className={`${styles.statusPill} ${
+              isPublished ? styles.statusPublished : styles.statusDraft
+            }`}
+          >
+            {isPublished ? "Published" : "Draft"}
+          </span>
+          <button
+            type="button"
+            className={styles.cmsButton}
+            disabled={busy}
+            onClick={() => transition(isPublished ? "draft" : "published")}
+          >
+            {isPublished ? "Unpublish" : "Publish"}
+          </button>
+        </div>
+      </div>
+
+      {isPublished ? (
+        <div className={styles.infoRow}>
+          <span className={styles.infoLabel}>Published at</span>
+          <span className={styles.infoValue}>{formatDate(meta.publishedAt)}</span>
+        </div>
+      ) : null}
+
+      <div className={styles.infoRow}>
+        <span className={styles.infoLabel}>Blog type</span>
+        <input
+          className={styles.cmsInput}
+          type="text"
+          value={blogType}
+          placeholder="e.g. announcement"
+          onChange={(e) => setBlogType(e.target.value)}
+          onBlur={() => {
+            if ((meta.blogType ?? "") !== blogType) {
+              void commitField({ blogType });
+            }
+          }}
+        />
+      </div>
+
+      <div className={styles.infoRow}>
+        <span className={styles.infoLabel}>Excerpt</span>
+        <textarea
+          className={styles.cmsTextarea}
+          value={excerpt}
+          rows={3}
+          placeholder="Short summary shown in listings"
+          onChange={(e) => setExcerpt(e.target.value)}
+          onBlur={() => {
+            if ((meta.excerpt ?? "") !== excerpt) {
+              void commitField({ excerpt });
+            }
+          }}
+        />
+      </div>
+
+      <div className={styles.infoRow}>
+        <span className={styles.infoLabel}>Hero image URL</span>
+        <input
+          className={styles.cmsInput}
+          type="text"
+          value={heroImageUrl}
+          placeholder="https://…"
+          onChange={(e) => setHeroImageUrl(e.target.value)}
+          onBlur={() => {
+            if ((meta.heroImageUrl ?? "") !== heroImageUrl) {
+              void commitField({ heroImageUrl });
+            }
+          }}
+        />
+      </div>
+
+      <div className={styles.infoRow}>
+        <span className={styles.infoLabel}>Read time (min)</span>
+        <input
+          className={styles.cmsInput}
+          type="number"
+          min={0}
+          value={readTime}
+          placeholder="0"
+          onChange={(e) => setReadTime(e.target.value)}
+          onBlur={() => {
+            const trimmed = readTime.trim();
+            const parsed = trimmed === "" ? undefined : Number(trimmed);
+            if (parsed != null && Number.isNaN(parsed)) return;
+            const current = meta.readTimeMinutes ?? undefined;
+            if (parsed !== current) {
+              void commitField({ readTimeMinutes: parsed });
+            }
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function NotesInfoPanel() {
   const note = useActiveNote();
   const user = useAuthStore((s) => s.user);
@@ -95,10 +264,18 @@ export function NotesInfoPanel() {
           <span className={styles.infoLabel}>Word count</span>
           <span className={styles.infoValue}>{note.wordCount}</span>
         </div>
-        <div className={styles.infoRow}>
-          <span className={styles.infoLabel}>Status</span>
-          <span className={styles.infoValue}>{formatStatus(meta.status)}</span>
-        </div>
+        {isAuraBlogProject(meta.projectId) ? (
+          <BlogCmsSection
+            projectId={meta.projectId as string}
+            noteId={meta.id}
+            meta={meta}
+          />
+        ) : (
+          <div className={styles.infoRow}>
+            <span className={styles.infoLabel}>Status</span>
+            <span className={styles.infoValue}>{formatStatus(meta.status)}</span>
+          </div>
+        )}
       </div>
       <OverlayScrollbar scrollRef={scrollRef} />
     </div>

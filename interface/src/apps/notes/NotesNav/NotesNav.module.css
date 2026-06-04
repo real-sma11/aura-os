@@ -10,3 +10,26 @@
   color: var(--color-text-secondary);
   font-size: 12px;
 }
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  font-size: 9px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.statusDraft {
+  background: var(--color-overlay-subtle);
+  color: var(--color-text-secondary);
+}
+
+.statusPublished {
+  background: color-mix(in srgb, var(--color-primary) 22%, transparent);
+  color: var(--color-primary);
+}
