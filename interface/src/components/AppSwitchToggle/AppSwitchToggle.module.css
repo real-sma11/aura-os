@@ -150,16 +150,20 @@
     10px 14px 24px -4px var(--sw-active-shadow);
 }
 
-/* Beveled seam ring around every half, always shown. Idle halves get the
-   recessed dark-top / light-bottom bevel; the active half overrides the
-   gradient below to a directional light->dark border. */
+/* Shared border for both halves: one diagonal gradient, bright on the
+   upper-diagonal and fading to dark toward the bottom. Identical on the
+   idle and selected sides so the border reads as one continuous frame. */
 .half::before {
   content: "";
   position: absolute;
   inset: 0;
   border-radius: inherit;
   padding: 1px;
-  background: linear-gradient(180deg, var(--sw-ring-top), var(--sw-ring-bottom));
+  background: linear-gradient(
+    150deg,
+    var(--sw-active-ring-light) 0%,
+    var(--sw-active-ring-dark) 65%
+  );
   -webkit-mask:
     linear-gradient(#000 0 0) content-box,
     linear-gradient(#000 0 0);
@@ -177,22 +181,6 @@
 
 .halfRight::before {
   padding: 1px 1px 1px 0;
-}
-
-.halfLeft.halfActive::before {
-  background: linear-gradient(
-    135deg,
-    var(--sw-active-ring-light),
-    var(--sw-active-ring-dark)
-  );
-}
-
-.halfRight.halfActive::before {
-  background: linear-gradient(
-    225deg,
-    var(--sw-active-ring-light),
-    var(--sw-active-ring-dark)
-  );
 }
 
 /* Accent glow flaring up-and-outward from the active half. */
