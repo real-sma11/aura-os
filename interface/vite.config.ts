@@ -84,6 +84,13 @@ export default defineConfig(({ mode, command }) => {
     build: {
       sourcemap: false,
       chunkSizeWarningLimit: 1400,
+      // Vite 8 switched the default CSS minifier to Lightning CSS, which
+      // downlevels modern CSS against the `baseline-widely-available` target.
+      // That strips the glass-panel recipe (`backdrop-filter` / `color-mix`)
+      // from production bundles, so release builds lose the frosted blur that
+      // the dev server (unminified CSS) renders correctly. esbuild minifies
+      // without dropping these declarations, keeping prod == dev.
+      cssMinify: "esbuild",
       rollupOptions: {
         output: {
           manualChunks(id) {
