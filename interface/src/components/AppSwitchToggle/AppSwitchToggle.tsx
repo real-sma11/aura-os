@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { cn } from "@cypher-asi/zui";
 import styles from "./AppSwitchToggle.module.css";
 
@@ -46,16 +46,19 @@ function AppSwitchToggleBase({
   ariaLabel = "Switch",
 }: AppSwitchToggleProps): React.ReactElement {
   const [pending, setPending] = useState<string | null>(null);
-  // Bumped on each switch so the label fade animation replays — used as a
-  // key suffix on the label spans, which re-mounts them and restarts the
-  // CSS fade keyframes (labelFadeIn / labelFadeOut) from the top. Without
-  // it the animation would only run on initial mount.
-  const [switchTick, setSwitchTick] = useState(0);
+  const [isSwitching, setIsSwitching] = useState(false);
+  const switchTimerRef = useRef<number | null>(null);
   const selected = pending ?? active;
 
   useEffect(() => {
     if (pending === active) setPending(null);
   }, [pending, active]);
+
+  useEffect(() => {
+    return () => {
+      if (switchTimerRef.current != null) window.clearTimeout(switchTimerRef.current);
+    };
+  }, []);
 
   const activeIndex = Math.max(
     0,
@@ -66,7 +69,7 @@ function AppSwitchToggleBase({
     <div className={styles.wrap}>
       <div className={styles.plate}>
         <div
-          className={styles.panel}
+          className={cn(styles.panel, isSwitching && styles.panelSwitching)}
           data-active-index={activeIndex}
           role="group"
           aria-label={ariaLabel}
@@ -87,13 +90,18 @@ function AppSwitchToggleBase({
                   // keeps animating smoothly even while the caller mounts
                   // whatever the new selection points at.
                   setPending(option.id);
-                  setSwitchTick((tick) => tick + 1);
+                  if (switchTimerRef.current != null) {
+                    window.clearTimeout(switchTimerRef.current);
+                  }
+                  setIsSwitching(true);
+                  switchTimerRef.current = window.setTimeout(() => {
+                    setIsSwitching(false);
+                    switchTimerRef.current = null;
+                  }, 340);
                   onChange(option.id);
                 }}
               >
-                <span key={`${option.id}-${switchTick}`} className={styles.label}>
-                  {option.label}
-                </span>
+                <span className={styles.label}>{option.label}</span>
               </button>
             );
           })}
