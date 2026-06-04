@@ -187,6 +187,25 @@
   background-position: right center;
 }
 
+/* The bright end of the border gradient follows the selected side: top-left
+   when the left half is selected, top-right when the right half is. Only the
+   gradient direction changes; the full-width span keeps it continuous. */
+.panel[data-selected="agents"] .half::before {
+  background-image: linear-gradient(
+    135deg,
+    var(--sw-active-ring-light) 0%,
+    var(--sw-active-ring-dark) 65%
+  );
+}
+
+.panel[data-selected="projects"] .half::before {
+  background-image: linear-gradient(
+    225deg,
+    var(--sw-active-ring-light) 0%,
+    var(--sw-active-ring-dark) 65%
+  );
+}
+
 /* Accent glow flaring up-and-outward from the active half. */
 .halfActive::after {
   content: "";

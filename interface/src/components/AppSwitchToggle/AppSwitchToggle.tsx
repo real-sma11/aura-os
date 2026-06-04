@@ -51,6 +51,7 @@ export function AppSwitchToggle({ active }: AppSwitchToggleProps): React.ReactEl
       <div className={styles.plate}>
         <div
           className={styles.panel}
+          data-selected={selected}
           role="group"
           aria-label="Switch between Agents and Projects"
         >
