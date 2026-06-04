@@ -19,7 +19,9 @@
 
 .wrap {
   flex-shrink: 0;
-  padding: 12px 12px 10px;
+  /* Horizontal padding matches the agent list row's `margin-inline`
+     (var(--space-2)) so the plate lines up with the selected agent bg. */
+  padding: 12px var(--space-2) 10px;
 
   /* Light-mode defaults. */
   --sw-plate-from: #ececee;
