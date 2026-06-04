@@ -757,6 +757,7 @@ mod tests {
             prompt: "deliberate".into(),
             model: Some("model-a".into()),
             council_index: Some(0),
+            council_mechanism: Some("synthesize".into()),
         }))
         .expect("send spawn 0");
         tx.send(OutboundMessage::SubagentStatus(SubagentStatus {
@@ -772,6 +773,7 @@ mod tests {
             prompt: "deliberate".into(),
             model: Some("model-b".into()),
             council_index: Some(1),
+            council_mechanism: Some("synthesize".into()),
         }))
         .expect("send spawn 1");
         tx.send(OutboundMessage::SessionReady(SessionReady {

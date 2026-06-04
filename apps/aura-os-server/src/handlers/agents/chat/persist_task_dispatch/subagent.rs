@@ -85,9 +85,14 @@ fn block_has_council_member(block: &Value, child_run_id: &str) -> bool {
 /// parent session id, parent tool-use id, child run id, subagent type,
 /// and spawn prompt.
 ///
-/// `model` / `council_index` are set only for AURA Council members
-/// (`None` for ordinary `task` spawns). They are stamped additively so a
-/// reloaded turn can group council member threads into a council panel.
+/// `model` / `council_index` / `council_mechanism` are set only for AURA
+/// Council members (`None` for ordinary `task` spawns). They are stamped
+/// additively so a reloaded turn can group council member threads into a
+/// council panel and label it with the active combine mechanism.
+// The parameters mirror the flat `SubagentSpawned` wire fields one-for-one;
+// bundling them into a struct here would only add an indirection that the
+// single caller has to unpack again, so the wide signature is intentional.
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn handle_subagent_spawned(
     state: &mut PersistTaskState,
     ctx: &ChatPersistCtx,
@@ -97,6 +102,7 @@ pub(super) async fn handle_subagent_spawned(
     prompt: &str,
     model: Option<&str>,
     council_index: Option<u32>,
+    council_mechanism: Option<&str>,
 ) {
     if let Some(parent_id) = parent_tool_use_id.filter(|s| !s.is_empty()) {
         // AURA Council members are fanned out directly with no preceding
@@ -135,6 +141,12 @@ pub(super) async fn handle_subagent_spawned(
                     block["parent_tool_use_id"] = json!(parent_id);
                     block["subagent_type"] = json!(subagent_type);
                     block["prompt"] = json!(prompt);
+                    // Council-wide property (same for every member), so
+                    // stamp it once on the block root rather than per
+                    // member. Lets a reloaded turn label the panel.
+                    if let Some(mechanism) = council_mechanism {
+                        block["council_mechanism"] = json!(mechanism);
+                    }
                 }
                 // Ordinary `task` spawn (unchanged): stamp the single child
                 // linkage onto the originating block so a replay can both
@@ -166,6 +178,7 @@ pub(super) async fn handle_subagent_spawned(
             "prompt": prompt,
             "model": model,
             "council_index": council_index,
+            "council_mechanism": council_mechanism,
             "seq": state.seq,
         }),
     )
@@ -288,6 +301,7 @@ mod tests {
             "explore the repo",
             None,
             None,
+            None,
         )
         .await;
 
@@ -372,6 +386,7 @@ mod tests {
             "go",
             None,
             None,
+            None,
         )
         .await;
         assert!(
@@ -408,6 +423,7 @@ mod tests {
             "deliberate on the answer",
             Some("anthropic/claude"),
             Some(1),
+            Some("contrast"),
         )
         .await;
         handle_subagent_spawned(
@@ -419,6 +435,7 @@ mod tests {
             "deliberate on the answer",
             Some("openai/gpt"),
             Some(0),
+            Some("contrast"),
         )
         .await;
 
@@ -459,6 +476,12 @@ mod tests {
         // Council members must NOT collapse onto the single scalar
         // `child_run_id` (that's the non-council `task` shape).
         assert!(block.get("child_run_id").is_none());
+        // The council-wide combine mechanism is stamped once on the block
+        // root so a reloaded turn can label the panel.
+        assert_eq!(
+            block.get("council_mechanism").and_then(Value::as_str),
+            Some("contrast"),
+        );
     }
 
     #[tokio::test]
@@ -481,6 +504,7 @@ mod tests {
             "deliberate on the answer",
             Some("anthropic/claude"),
             Some(1),
+            Some("contrast"),
         )
         .await;
         handle_subagent_spawned(
@@ -492,6 +516,7 @@ mod tests {
             "deliberate on the answer",
             Some("openai/gpt"),
             Some(0),
+            Some("contrast"),
         )
         .await;
 

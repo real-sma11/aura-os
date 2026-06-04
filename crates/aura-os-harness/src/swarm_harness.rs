@@ -909,6 +909,7 @@ mod tests {
             prompt: "deliberate".into(),
             model: Some("model-a".into()),
             council_index: Some(0),
+            council_mechanism: Some("synthesize".into()),
         }))
         .expect("send spawn");
         tx.send(OutboundMessage::SessionReady(SessionReady {

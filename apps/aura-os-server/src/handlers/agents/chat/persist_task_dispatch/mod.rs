@@ -102,6 +102,7 @@ pub(super) async fn handle_outbound(
                 &spawned.prompt,
                 spawned.model.as_deref(),
                 spawned.council_index,
+                spawned.council_mechanism.as_deref(),
             )
             .await;
             true

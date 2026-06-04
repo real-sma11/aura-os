@@ -437,6 +437,7 @@ mod tests {
             prompt: "deliberate".to_string(),
             model: Some(format!("model-{council_index}")),
             council_index: Some(council_index),
+            council_mechanism: Some("synthesize".into()),
         })
     }
 
