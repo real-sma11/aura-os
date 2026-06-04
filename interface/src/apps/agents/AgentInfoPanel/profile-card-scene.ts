@@ -100,8 +100,8 @@ const INFO_PLATE = {
  */
 const INFO_TEXT = {
   w: 1.7,
-  top: -1.3,
-  bottom: -1.63,
+  top: -1.34,
+  bottom: -1.67,
   canvasW: 1200,
 };
 

@@ -61,11 +61,14 @@
   width: 100%;
 }
 
-/* Shared "cascade in" entrance — see the `--aura-list-cascade-*` tokens +
-   `aura-list-cascade-in` keyframe in index.css. Only animates while an
-   ancestor carries `data-cascade="true"` (set on the active pane by `LeftMenu`
-   on reveal) so steady-state scrolling never re-fires it. The stagger reads the
-   inherited `--cascade-index` set on each virtual row. */
+/* Shared "cascade in" entrance — driven by the `--aura-list-cascade-*` tokens
+   in index.css. Only animates while an ancestor carries `data-cascade="true"`
+   (set on the active pane by `LeftMenu` on reveal) so steady-state scrolling
+   never re-fires it. The stagger reads the inherited `--cascade-index` set on
+   each virtual row. The keyframe is declared locally (not in index.css)
+   because CSS Modules scopes `animation-name`, so a bare reference to a
+   global keyframe would resolve to a hashed name that never matches. Kept
+   identical to LeftMenuTree so Agents and Projects lists come in the same way. */
 .cascadeInner {
   width: 100%;
 }
@@ -74,6 +77,18 @@
   animation: aura-list-cascade-in var(--aura-list-cascade-duration)
     var(--aura-list-cascade-ease) both;
   animation-delay: calc(min(var(--cascade-index, 0), 14) * var(--aura-list-cascade-step));
+}
+
+@keyframes aura-list-cascade-in {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
