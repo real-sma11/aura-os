@@ -32,6 +32,7 @@ import { AppearanceSection } from "../../views/SettingsView/AppearanceSection";
 import {
   THEME_SUB_AREAS,
   DEFAULT_THEME_SUB_AREA,
+  groupThemeSubAreas,
   type ThemeSubArea,
 } from "../../views/SettingsView/AppearanceSection/themeSubAreas";
 import { AboutSection } from "../../views/SettingsView/AboutSection";
@@ -216,6 +217,9 @@ export function OrgSettingsPanel({ isOpen, onClose, initialSection }: Props) {
   const activeSubArea = drill
     ? (drill.subAreas.find((s) => s.id === subAreaId) ?? drill.subAreas[0])
     : undefined;
+  // Break the drill-down sub-nav into labeled groups so it reads as a
+  // structured outline (mirrors the You/Team/App grouping above).
+  const subGroups = drill ? groupThemeSubAreas(drill.subAreas) : [];
 
   // App-scoped sections render regardless of org availability so users can
   // always reach Appearance / About / etc. even when no team is loaded.
@@ -245,15 +249,20 @@ export function OrgSettingsPanel({ isOpen, onClose, initialSection }: Props) {
                     {drill.label}
                   </span>
                 </div>
-                <Navigator
-                  items={drill.subAreas.map((s) => ({
-                    id: s.id,
-                    label: s.label,
-                    icon: <s.icon size={14} />,
-                  }))}
-                  value={subAreaId}
-                  onChange={setSubAreaId}
-                />
+                {subGroups.map((group) => (
+                  <div key={group.group}>
+                    <div className={styles.navGroupLabel}>{group.group}</div>
+                    <Navigator
+                      items={group.items.map((s) => ({
+                        id: s.id,
+                        label: s.label,
+                        icon: <s.icon size={14} />,
+                      }))}
+                      value={subAreaId}
+                      onChange={setSubAreaId}
+                    />
+                  </div>
+                ))}
               </>
             ) : (
               <>

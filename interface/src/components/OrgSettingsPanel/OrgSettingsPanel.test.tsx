@@ -149,29 +149,45 @@ vi.mock("../TierSubscriptionModal", () => ({
 vi.mock("../../views/SettingsView/AppearanceSection", () => ({
   AppearanceSection: () => <div data-testid="section-appearance">Appearance</div>,
 }));
-vi.mock("../../views/SettingsView/AppearanceSection/themeSubAreas", () => ({
-  DEFAULT_THEME_SUB_AREA: "mode",
-  THEME_SUB_AREAS: [
+vi.mock("../../views/SettingsView/AppearanceSection/themeSubAreas", () => {
+  const THEME_SUB_AREAS = [
     {
       id: "mode",
       label: "Mode & accent",
+      group: "Appearance",
       icon: () => null,
       Component: () => <div data-testid="subarea-mode">Mode pane</div>,
     },
     {
       id: "typography",
       label: "Typography",
+      group: "Appearance",
       icon: () => null,
       Component: () => <div data-testid="subarea-typography">Typography pane</div>,
     },
     {
       id: "presets",
       label: "Presets",
+      group: "Library",
       icon: () => null,
       Component: () => <div data-testid="subarea-presets">Presets pane</div>,
     },
-  ],
-}));
+  ];
+  return {
+    DEFAULT_THEME_SUB_AREA: "mode",
+    THEME_SUB_AREAS,
+    groupThemeSubAreas: (subAreas: typeof THEME_SUB_AREAS) =>
+      subAreas.reduce<{ group: string; items: typeof THEME_SUB_AREAS }[]>(
+        (acc, subArea) => {
+          const last = acc[acc.length - 1];
+          if (last && last.group === subArea.group) last.items.push(subArea);
+          else acc.push({ group: subArea.group, items: [subArea] });
+          return acc;
+        },
+        [],
+      ),
+  };
+});
 vi.mock("../../views/SettingsView/AboutSection", () => ({
   AboutSection: () => <div data-testid="section-about">About</div>,
 }));
@@ -297,6 +313,9 @@ describe("OrgSettingsPanel", () => {
     expect(screen.getByText("Mode & accent")).toBeInTheDocument();
     expect(screen.getByText("Typography")).toBeInTheDocument();
     expect(screen.getByTestId("subarea-mode")).toBeInTheDocument();
+    // Sub-areas are split into labeled groups.
+    expect(screen.getByText("Appearance")).toBeInTheDocument();
+    expect(screen.getByText("Library")).toBeInTheDocument();
     // Top-level groups are gone while drilled in.
     expect(screen.queryByText("Notifications")).not.toBeInTheDocument();
   });
