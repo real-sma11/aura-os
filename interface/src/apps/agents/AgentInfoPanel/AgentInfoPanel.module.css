@@ -105,28 +105,32 @@
      fill over a gradient border-box) so the gradient follows the rounded
      corners, which border-image would otherwise square off. */
   border: 1px solid transparent;
-  /* Black-glass stack (layers paint top-to-bottom): a soft diagonal glare
-     streak over a uniform smoked-black tint that stays translucent enough for
-     the blur to read everywhere, finished with the metallic edge gradient. */
+  /* Theme-aware glass stack (layers paint top-to-bottom): a translucent tint
+     of the base background that stays see-through enough for the blur to read
+     everywhere, finished with a subtle edge gradient. Built from theme tokens
+     so the panel reads as smoked-black glass in dark mode and a frosted light
+     pane in light mode. `--color-bg` is near-black in dark / white in light, so
+     mixing it with transparent flips the whole tint with the active theme. */
+  --spec-engrave: 0 1px 0 color-mix(in srgb, var(--color-bg) 55%, transparent);
   background:
     linear-gradient(
         135deg,
-        rgba(0, 0, 0, 0.6) 0%,
-        rgba(0, 0, 0, 0.32) 100%
+        color-mix(in srgb, var(--color-bg) 60%, transparent) 0%,
+        color-mix(in srgb, var(--color-bg) 32%, transparent) 100%
       )
       padding-box,
     linear-gradient(
         135deg,
-        rgba(255, 255, 255, 0.12) 0%,
-        rgba(255, 255, 255, 0.05) 50%,
-        rgba(255, 255, 255, 0.02) 100%
+        var(--color-overlay-medium) 0%,
+        var(--color-overlay-light) 50%,
+        transparent 100%
       )
       border-box;
   backdrop-filter: blur(26px) saturate(135%);
   -webkit-backdrop-filter: blur(26px) saturate(135%);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 10px 30px -12px rgba(0, 0, 0, 0.85);
+    inset 0 1px 0 var(--color-overlay-light),
+    0 10px 30px -12px var(--color-backdrop-medium);
 }
 
 /* Faint diagonal glass reflection. */
@@ -137,9 +141,9 @@
   pointer-events: none;
   background: linear-gradient(
     115deg,
-    rgba(255, 255, 255, 0.04) 0%,
-    rgba(255, 255, 255, 0) 40%,
-    rgba(255, 255, 255, 0) 100%
+    var(--color-overlay-subtle) 0%,
+    transparent 40%,
+    transparent 100%
   );
   mix-blend-mode: soft-light;
 }
@@ -155,9 +159,9 @@
   justify-content: space-between;
   gap: var(--space-3);
   padding: 7px 0;
-  /* Grooved divider: dark line with a light bevel below it. */
-  border-bottom: 1px solid rgba(0, 0, 0, 0.42);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.07);
+  /* Grooved divider: theme-aware separator with a faint bevel below it. */
+  border-bottom: 1px solid var(--color-border-light);
+  box-shadow: 0 1px 0 var(--color-overlay-light);
 }
 
 .specRow:last-child {
@@ -170,21 +174,21 @@
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #aab1ba;
-  /* Engraved: a dark drop under the glyphs for contrast on the metal. */
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+  color: var(--color-text-secondary);
+  /* Engraved: a theme-aware drop under the glyphs for contrast on the glass. */
+  text-shadow: var(--spec-engrave);
 }
 
 .specValue {
   min-width: 0;
   font-size: 14px;
   font-weight: 600;
-  color: #f4f6f9;
+  color: var(--color-text-primary);
   text-align: right;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+  text-shadow: var(--spec-engrave);
 }
 
 .specValueMono {
@@ -205,17 +209,17 @@
      shadows so the bar still reads as set into the card. */
   background: var(--input-pill-fill);
   box-shadow:
-    inset 0 2px 4px rgba(0, 0, 0, 0.55),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.08);
+    inset 0 2px 4px var(--color-backdrop-light),
+    inset 0 -1px 0 var(--color-overlay-light);
 }
 
 .specChannelIcon {
   width: 20px;
   height: 20px;
   flex: 0 0 auto;
-  color: #cdd3da;
-  /* Engraved: a subtle dark drop shadow under the light glyph. */
-  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.6));
+  color: var(--color-text-secondary);
+  /* Engraved: a subtle theme-aware drop shadow under the glyph. */
+  filter: drop-shadow(0 1px 0 color-mix(in srgb, var(--color-bg) 55%, transparent));
 }
 
 .specLinks {
@@ -234,8 +238,8 @@
   background: transparent;
   cursor: pointer;
   text-align: left;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.42);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.07);
+  border-bottom: 1px solid var(--color-border-light);
+  box-shadow: 0 1px 0 var(--color-overlay-light);
   transition: color 160ms ease;
 }
 
@@ -247,24 +251,24 @@
 .specLinkLabel {
   font-size: 14px;
   font-weight: 600;
-  color: #dfe3e8;
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+  color: var(--color-text-primary);
+  text-shadow: var(--spec-engrave);
 }
 
 .specLinkCount {
   font-size: 13px;
   font-weight: 600;
-  color: #9aa0a8;
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+  color: var(--color-text-muted);
+  text-shadow: var(--spec-engrave);
 }
 
 .specLink:hover .specLinkLabel {
-  color: #ffffff;
-  text-shadow: 0 0 12px rgba(214, 232, 255, 0.55);
+  color: var(--color-text-primary);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--color-card-line) 55%, transparent);
 }
 
 .specLink:hover .specLinkCount {
-  color: #eef1f5;
+  color: var(--color-text-secondary);
 }
 
 @media (prefers-reduced-motion: reduce) {
