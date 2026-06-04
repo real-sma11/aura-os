@@ -268,7 +268,7 @@ describe("capture-bridge helpers", () => {
     expect(projectStats.applied).toContain("project-demo-stats");
     expect(debug.applied).toContain("debug-demo-run");
     expect(useFeedbackStore.getState().items.length).toBeGreaterThan(1);
-    expect(useNotesStore.getState().activeRelPath).toBe("Launch Plan.md");
+    expect(useNotesStore.getState().activeNoteId).toBe("capture-demo-note");
     expect(useKanbanStore.getState().tasksByProject["22222222-2222-4222-8222-222222222222"]?.tasks.length).toBeGreaterThan(1);
     expect(useProcessStore.getState().nodes["capture-demo-process"]?.length).toBeGreaterThan(1);
     expect(useFeedStore.getState().liveEvents?.length).toBeGreaterThan(1);

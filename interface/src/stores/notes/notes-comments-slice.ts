@@ -1,31 +1,31 @@
 import type { StateCreator } from "zustand";
 import { api } from "../../api/client";
 import { isAuraCaptureSessionActive } from "../../lib/screenshot-bridge";
-import type { NotesComment } from "../../shared/api/notes";
+import type { NoteComment } from "../../shared/api/notes";
 import { useAuthStore } from "../auth-store";
 import { makeNoteKey } from "./notes-utils";
 import type { NotesStore } from "./notes-store";
 
 export interface CommentsSlice {
-  commentsByNote: Record<string, NotesComment[]>;
-  loadComments: (projectId: string, relPath: string) => Promise<void>;
+  commentsByNote: Record<string, NoteComment[]>;
+  loadComments: (projectId: string, noteId: string) => Promise<void>;
   addComment: (
     projectId: string,
-    relPath: string,
+    noteId: string,
     body: string,
   ) => Promise<void>;
   deleteComment: (
     projectId: string,
-    relPath: string,
-    id: string,
+    noteId: string,
+    commentId: string,
   ) => Promise<void>;
 }
 
 /**
- * Comments slice — owns the per-note comment list (`commentsByNote`)
- * and the load/add/delete actions that talk to the comments endpoints.
- * The author display name is read directly from the auth store rather
- * than threaded through arguments.
+ * Comments slice — owns the per-note comment list (`commentsByNote`,
+ * keyed by `projectId::noteId`) and the load/add/delete actions. The
+ * author display name is read from the auth store rather than threaded
+ * through arguments.
  */
 export const createCommentsSlice: StateCreator<
   NotesStore,
@@ -35,8 +35,8 @@ export const createCommentsSlice: StateCreator<
 > = (set) => ({
   commentsByNote: {},
 
-  loadComments: async (projectId, relPath) => {
-    const key = makeNoteKey(projectId, relPath);
+  loadComments: async (projectId, noteId) => {
+    const key = makeNoteKey(projectId, noteId);
     if (isAuraCaptureSessionActive()) {
       set((state) => ({
         commentsByNote: {
@@ -47,7 +47,7 @@ export const createCommentsSlice: StateCreator<
       return;
     }
     try {
-      const comments = await api.notes.listComments(projectId, relPath);
+      const comments = await api.notes.listComments(projectId, noteId);
       set((state) => ({
         commentsByNote: { ...state.commentsByNote, [key]: comments },
       }));
@@ -56,13 +56,13 @@ export const createCommentsSlice: StateCreator<
     }
   },
 
-  addComment: async (projectId, relPath, body) => {
-    const key = makeNoteKey(projectId, relPath);
+  addComment: async (projectId, noteId, body) => {
+    const key = makeNoteKey(projectId, noteId);
     const user = useAuthStore.getState().user;
     try {
       const comment = await api.notes.addComment(
         projectId,
-        relPath,
+        noteId,
         body,
         user?.display_name,
       );
@@ -77,14 +77,16 @@ export const createCommentsSlice: StateCreator<
     }
   },
 
-  deleteComment: async (projectId, relPath, id) => {
-    const key = makeNoteKey(projectId, relPath);
+  deleteComment: async (projectId, noteId, commentId) => {
+    const key = makeNoteKey(projectId, noteId);
     try {
-      await api.notes.deleteComment(projectId, relPath, id);
+      await api.notes.deleteComment(projectId, noteId, commentId);
       set((state) => ({
         commentsByNote: {
           ...state.commentsByNote,
-          [key]: (state.commentsByNote[key] ?? []).filter((c) => c.id !== id),
+          [key]: (state.commentsByNote[key] ?? []).filter(
+            (c) => c.id !== commentId,
+          ),
         },
       }));
     } catch (err) {

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../components/OverlayScrollbar", () => ({
@@ -11,19 +11,23 @@ import { useAuthStore } from "../../../stores/auth-store";
 
 function seedActiveNote(content: string, createdBy: string = "Ada") {
   const projectId = "proj-1";
-  const relPath = "Notes/Idea.md";
-  const key = makeNoteKey(projectId, relPath);
+  const noteId = "note-1";
+  const key = makeNoteKey(projectId, noteId);
   useNotesStore.setState({
     activeProjectId: projectId,
-    activeRelPath: relPath,
+    activeNoteId: noteId,
     contentCache: {
       [key]: {
         content,
         title: "Big Ideas",
-        absPath: "C:/projects/proj-1/Notes/Idea.md",
-        frontmatter: {
-          created_at: "2025-04-10T12:00:00.000Z",
-          created_by: createdBy,
+        note: {
+          id: noteId,
+          projectId,
+          title: "Big Ideas",
+          status: "draft",
+          authorName: createdBy,
+          createdBy,
+          createdAt: "2025-04-10T12:00:00.000Z",
         },
         updatedAt: "2025-04-11T09:00:00.000Z",
         wordCount: 42,
@@ -37,7 +41,7 @@ describe("NotesInfoPanel", () => {
   beforeEach(() => {
     useNotesStore.setState({
       activeProjectId: null,
-      activeRelPath: null,
+      activeNoteId: null,
       contentCache: {},
     });
   });
@@ -48,20 +52,21 @@ describe("NotesInfoPanel", () => {
     expect(screen.queryByText(/Word count/)).not.toBeInTheDocument();
   });
 
-  it("renders title, location, created-at/by, and word count rows", () => {
+  it("renders title, created-at/by, word count, and status rows", () => {
     seedActiveNote("# Top\n\nbody");
 
     render(<NotesInfoPanel />);
 
     expect(screen.getByText("Big Ideas")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "C:/projects/proj-1/Notes/Idea.md" }),
-    ).toBeInTheDocument();
     expect(screen.getByText("42")).toBeInTheDocument();
 
     expect(screen.getByText("Created at")).toBeInTheDocument();
     expect(screen.getByText("Created by")).toBeInTheDocument();
     expect(screen.getByText("Ada")).toBeInTheDocument();
+    expect(screen.getByText("Status")).toBeInTheDocument();
+    expect(screen.getByText("Draft")).toBeInTheDocument();
+    // No filesystem location row in the storage-backed info panel.
+    expect(screen.queryByText("Location")).not.toBeInTheDocument();
     // TOC moved to its own panel; nothing TOC-related should render here.
     expect(screen.queryByText("Table of contents")).not.toBeInTheDocument();
     expect(screen.queryByText("No headings yet")).not.toBeInTheDocument();
@@ -85,18 +90,5 @@ describe("NotesInfoPanel", () => {
     render(<NotesInfoPanel />);
     expect(screen.getByText("Rainer")).toBeInTheDocument();
     expect(screen.queryByText(selfId)).not.toBeInTheDocument();
-  });
-
-  it("fires revealInFolder when the Location path is clicked", () => {
-    const revealInFolder = vi.fn();
-    seedActiveNote("# Top");
-    useNotesStore.setState({ revealInFolder });
-    render(<NotesInfoPanel />);
-    fireEvent.click(
-      screen.getByRole("button", { name: "C:/projects/proj-1/Notes/Idea.md" }),
-    );
-    expect(revealInFolder).toHaveBeenCalledWith(
-      "C:/projects/proj-1/Notes/Idea.md",
-    );
   });
 });

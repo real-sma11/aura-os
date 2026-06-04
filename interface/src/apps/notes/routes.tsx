@@ -16,7 +16,7 @@ export const notesRoutes: RouteObject[] = [
   { path: "notes", element: <NotesIndexRedirect /> },
   { path: "notes/:projectId", element: <NotesIndexRedirect /> },
   {
-    path: "notes/:projectId/:notePath",
+    path: "notes/:projectId/:noteId",
     element: <ShellRoutePlaceholder title="Notes" />,
   },
 ];

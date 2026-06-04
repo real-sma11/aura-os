@@ -4,7 +4,6 @@ import type { MenuItem } from "@cypher-asi/zui";
 import {
   FilePlus,
   FolderPlus,
-  FolderOpen,
   Pencil,
   Trash2,
 } from "lucide-react";
@@ -13,7 +12,6 @@ import styles from "./NotesEntryContextMenu.module.css";
 
 const noteMenuItems: MenuItem[] = [
   { id: "rename", label: "Rename", icon: <Pencil size={14} /> },
-  { id: "reveal", label: "Reveal in folder", icon: <FolderOpen size={14} /> },
   { type: "separator" },
   { id: "delete", label: "Delete", icon: <Trash2 size={14} /> },
 ];

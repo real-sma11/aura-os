@@ -16,7 +16,7 @@ import type {
   Task,
 } from "../shared/types";
 import type { DebugRunMetadata } from "../shared/api/debug";
-import type { NotesTreeNode } from "../shared/api/notes";
+import type { Note, NoteFolder } from "../shared/api/notes";
 import type { FeedbackComment, FeedbackItem } from "../apps/feedback/types";
 import type { DisplaySessionEvent } from "../shared/types/stream";
 import { emptyAgentPermissions } from "../shared/types/permissions-wire";
@@ -34,7 +34,8 @@ const DEMO_PROCESS_ID = "capture-demo-process";
 const DEMO_PROCESS_RUN_ID = "capture-demo-process-run";
 const DEMO_DEBUG_RUN_ID = "capture-demo-debug-run";
 const DEMO_DEBUG_SPEC_ID = "capture-demo-debug-spec";
-const DEMO_NOTE_PATH = "Launch Plan.md";
+const DEMO_NOTE_ID = "capture-demo-note";
+const DEMO_NOTE_FOLDER_ID = "capture-demo-note-folder";
 
 const appBasePathById = new Map(apps.map((app) => [app.id, app.basePath]));
 
@@ -619,43 +620,64 @@ async function seedFeedbackBoard(): Promise<void> {
   });
 }
 
-function demoNotesTree(): NotesTreeNode[] {
+function demoNoteFolders(): NoteFolder[] {
   const now = new Date().toISOString();
   return [
     {
-      kind: "folder",
+      id: DEMO_NOTE_FOLDER_ID,
+      projectId: DEMO_PROJECT_ID,
+      parentId: null,
       name: "Release Notes",
-      relPath: "Release Notes",
-      children: [
-        {
-          kind: "note",
-          name: DEMO_NOTE_PATH,
-          relPath: DEMO_NOTE_PATH,
-          absPath: `/workspace/aura-launch/notes/${DEMO_NOTE_PATH}`,
-          title: "Launch Plan",
-          updatedAt: now,
-        },
-        {
-          kind: "note",
-          name: "QA Gates.md",
-          relPath: "QA Gates.md",
-          absPath: "/workspace/aura-launch/notes/QA Gates.md",
-          title: "QA Gates",
-          updatedAt: now,
-        },
-      ],
+      sortOrder: 0,
+      createdAt: now,
+      updatedAt: now,
+    },
+  ];
+}
+
+function demoNoteRow(): Note {
+  const now = new Date().toISOString();
+  return {
+    id: DEMO_NOTE_ID,
+    projectId: DEMO_PROJECT_ID,
+    folderId: DEMO_NOTE_FOLDER_ID,
+    title: "Launch Plan",
+    slug: "launch-plan",
+    sortOrder: 0,
+    wordCount: 48,
+    bodyUrl: null,
+    bodyS3Key: null,
+    status: "draft",
+    authorName: "Release Scout",
+    createdBy: "Release Scout",
+    createdAt: "2026-04-25T00:00:00.000Z",
+    updatedAt: now,
+  };
+}
+
+function demoNotes(): Note[] {
+  const now = new Date().toISOString();
+  return [
+    demoNoteRow(),
+    {
+      id: "capture-demo-note-2",
+      projectId: DEMO_PROJECT_ID,
+      folderId: DEMO_NOTE_FOLDER_ID,
+      title: "QA Gates",
+      slug: "qa-gates",
+      sortOrder: 1,
+      status: "draft",
+      authorName: "Release Scout",
+      createdBy: "Release Scout",
+      createdAt: now,
+      updatedAt: now,
     },
   ];
 }
 
 function demoNoteContent() {
   const now = new Date().toISOString();
-  const content = `---
-created_by: Release Scout
-created_at: 2026-04-25
----
-
-# Launch Plan
+  const content = `# Launch Plan
 
 ## Visual proof checklist
 
@@ -669,11 +691,7 @@ If a media candidate fails, the changelog stays text-only and the asset is omitt
   return {
     content,
     title: "Launch Plan",
-    frontmatter: {
-      created_by: "Release Scout",
-      created_at: "2026-04-25",
-    },
-    absPath: `/workspace/aura-launch/notes/${DEMO_NOTE_PATH}`,
+    note: demoNoteRow(),
     updatedAt: now,
     wordCount: content.split(/\s+/).filter(Boolean).length,
     dirty: false,
@@ -682,13 +700,13 @@ If a media candidate fails, the changelog stays text-only and the asset is omitt
 
 async function seedNotesWorkspace(): Promise<void> {
   const { useNotesStore, makeNoteKey } = await import("../stores/notes-store");
-  const key = makeNoteKey(DEMO_PROJECT_ID, DEMO_NOTE_PATH);
+  const key = makeNoteKey(DEMO_PROJECT_ID, DEMO_NOTE_ID);
   useNotesStore.setState((state) => ({
     trees: {
       ...state.trees,
       [DEMO_PROJECT_ID]: {
-        nodes: demoNotesTree(),
-        root: "/workspace/aura-launch/notes",
+        folders: demoNoteFolders(),
+        notes: demoNotes(),
         loading: false,
         titleOverrides: {},
       },
@@ -702,6 +720,7 @@ async function seedNotesWorkspace(): Promise<void> {
       [key]: [
         {
           id: "capture-note-comment-1",
+          noteId: DEMO_NOTE_ID,
           authorId: "capture-demo-user",
           authorName: "Maya",
           body: "This note gives the screenshot agent the exact populated surface to prove.",
@@ -710,7 +729,7 @@ async function seedNotesWorkspace(): Promise<void> {
       ],
     },
     activeProjectId: DEMO_PROJECT_ID,
-    activeRelPath: DEMO_NOTE_PATH,
+    activeNoteId: DEMO_NOTE_ID,
     sidekickTab: "toc",
   }));
 }

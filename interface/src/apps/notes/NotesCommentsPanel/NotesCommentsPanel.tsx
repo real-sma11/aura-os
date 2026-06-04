@@ -15,7 +15,7 @@ export function NotesCommentsPanel() {
   const activeKey = useActiveNoteKey();
   const comments = useNoteComments(
     activeKey?.projectId ?? null,
-    activeKey?.relPath ?? null,
+    activeKey?.noteId ?? null,
   );
   const addComment = useNotesStore((s) => s.addComment);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -41,7 +41,7 @@ export function NotesCommentsPanel() {
   const handleSubmit = () => {
     const text = draft.trim();
     if (!text) return;
-    void addComment(activeKey.projectId, activeKey.relPath, text);
+    void addComment(activeKey.projectId, activeKey.noteId, text);
     setDraft("");
   };
 
@@ -55,7 +55,7 @@ export function NotesCommentsPanel() {
             comments.map((comment) => (
               <div key={comment.id} className={styles.commentItem}>
                 <Avatar
-                  name={comment.authorName}
+                  name={comment.authorName ?? "Unknown"}
                   type="user"
                   size={28}
                   className={styles.commentAvatar}
@@ -63,10 +63,10 @@ export function NotesCommentsPanel() {
                 <div className={styles.commentContent}>
                   <div className={styles.commentHeader}>
                     <span className={styles.commentAuthor}>
-                      {comment.authorName}
+                      {comment.authorName ?? "Unknown"}
                     </span>
                     <span className={styles.commentTime}>
-                      {timeAgo(comment.createdAt)}
+                      {comment.createdAt ? timeAgo(comment.createdAt) : ""}
                     </span>
                   </div>
                   <span className={styles.commentText}>{comment.body}</span>

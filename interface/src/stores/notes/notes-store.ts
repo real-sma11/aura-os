@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
-import type { NotesComment } from "../../shared/api/notes";
+import type { NoteComment } from "../../shared/api/notes";
 import {
   createCommentsSlice,
   type CommentsSlice,
@@ -33,8 +33,8 @@ export const useNotesStore = create<NotesStore>()((...a) => ({
 export function useActiveNote(): NoteContent | null {
   return useNotesStore(
     useShallow((s) => {
-      if (!s.activeProjectId || !s.activeRelPath) return null;
-      return s.contentCache[makeNoteKey(s.activeProjectId, s.activeRelPath)] ?? null;
+      if (!s.activeProjectId || !s.activeNoteId) return null;
+      return s.contentCache[makeNoteKey(s.activeProjectId, s.activeNoteId)] ?? null;
     }),
   );
 }
@@ -42,8 +42,8 @@ export function useActiveNote(): NoteContent | null {
 export function useActiveNoteKey(): NoteKey | null {
   return useNotesStore(
     useShallow((s) => {
-      if (!s.activeProjectId || !s.activeRelPath) return null;
-      return { projectId: s.activeProjectId, relPath: s.activeRelPath };
+      if (!s.activeProjectId || !s.activeNoteId) return null;
+      return { projectId: s.activeProjectId, noteId: s.activeNoteId };
     }),
   );
 }
@@ -54,12 +54,12 @@ export function useNotesTree(projectId: string | null): NotesProjectTree | null 
 
 export function useNoteComments(
   projectId: string | null,
-  relPath: string | null,
-): NotesComment[] {
+  noteId: string | null,
+): NoteComment[] {
   return useNotesStore(
     useShallow((s) => {
-      if (!projectId || !relPath) return [];
-      return s.commentsByNote[makeNoteKey(projectId, relPath)] ?? [];
+      if (!projectId || !noteId) return [];
+      return s.commentsByNote[makeNoteKey(projectId, noteId)] ?? [];
     }),
   );
 }

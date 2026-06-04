@@ -1,67 +1,90 @@
 import { apiFetch } from "./core";
 
-export interface NoteFrontmatter {
-  created_at?: string;
-  created_by?: string;
-  updated_at?: string;
-}
-
-export interface NotesFolderNode {
-  kind: "folder";
-  name: string;
-  relPath: string;
-  children: NotesTreeNode[];
-}
-
-export interface NotesNoteNode {
-  kind: "note";
-  name: string;
-  relPath: string;
-  title: string;
-  absPath: string;
-  updatedAt?: string;
-}
-
-export type NotesTreeNode = NotesFolderNode | NotesNoteNode;
-
-export interface NotesTreeResponse {
-  nodes: NotesTreeNode[];
-  root: string;
-}
-
-export interface NotesReadResponse {
-  content: string;
-  title: string;
-  frontmatter: NoteFrontmatter;
-  absPath: string;
-  updatedAt?: string;
-  wordCount: number;
-}
-
-export interface NotesWriteResponse {
-  ok: boolean;
-  title: string;
-  /** Server-authoritative relative path after any title-driven rename. */
-  relPath: string;
-  /** Server-authoritative absolute path after any title-driven rename. */
-  absPath: string;
-  updatedAt: string;
-  wordCount: number;
-}
-
-export interface NotesCreateResponse {
-  relPath: string;
-  title: string;
-  absPath: string;
-}
-
-export interface NotesComment {
+/**
+ * A note row as returned by the storage-backed notes API. Mirrors
+ * `aura-os-storage`'s `StorageNote` (camelCase). The markdown BODY is
+ * NOT inlined — it lives on S3 and is referenced by `bodyUrl` /
+ * `bodyS3Key`; fetch the body with a plain `fetch(bodyUrl)`.
+ */
+export interface Note {
   id: string;
-  authorId: string;
-  authorName: string;
-  body: string;
-  createdAt: string;
+  projectId?: string | null;
+  orgId?: string | null;
+  folderId?: string | null;
+  title?: string | null;
+  slug?: string | null;
+  sortOrder?: number | null;
+  wordCount?: number | null;
+  bodyUrl?: string | null;
+  bodyS3Key?: string | null;
+  status?: string | null;
+  blogType?: string | null;
+  excerpt?: string | null;
+  heroImageUrl?: string | null;
+  readTimeMinutes?: number | null;
+  publishedAt?: string | null;
+  authorId?: string | null;
+  authorName?: string | null;
+  authorAvatarUrl?: string | null;
+  sections?: unknown;
+  createdBy?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 }
+
+/** A note folder. Folders nest via `parentId` (null = project root). */
+export interface NoteFolder {
+  id: string;
+  projectId?: string | null;
+  orgId?: string | null;
+  parentId?: string | null;
+  name?: string | null;
+  sortOrder?: number | null;
+  createdBy?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+/** A single comment on a note. */
+export interface NoteComment {
+  id: string;
+  noteId?: string | null;
+  authorId?: string | null;
+  authorName?: string | null;
+  body?: string | null;
+  createdAt?: string | null;
+}
+
+/** `{ folders, notes }` payload returned by the tree endpoint. */
+export interface NoteTreeResponse {
+  folders: NoteFolder[];
+  notes: Note[];
+}
+
+/** Partial note patch accepted by `updateNote`. */
+export interface UpdateNotePayload {
+  title?: string;
+  folderId?: string | null;
+  slug?: string;
+  bodyUrl?: string;
+  bodyS3Key?: string;
+  wordCount?: number;
+  blogType?: string;
+  excerpt?: string;
+  heroImageUrl?: string;
+  readTimeMinutes?: number;
+  sortOrder?: number;
+  sections?: unknown;
+}
+
+/** Partial folder patch accepted by `updateFolder`. */
+export interface UpdateFolderPayload {
+  name?: string;
+  parentId?: string | null;
+  sortOrder?: number;
+}
+
+export type NoteStatus = "draft" | "published";
 
 function projectPath(projectId: string, suffix: string): string {
   return `/api/notes/projects/${encodeURIComponent(projectId)}${suffix}`;
@@ -69,64 +92,99 @@ function projectPath(projectId: string, suffix: string): string {
 
 export const notesApi = {
   tree: (projectId: string) =>
-    apiFetch<NotesTreeResponse>(projectPath(projectId, "/tree")),
+    apiFetch<NoteTreeResponse>(projectPath(projectId, "/tree")),
 
-  read: (projectId: string, relPath: string) =>
-    apiFetch<NotesReadResponse>(
-      projectPath(projectId, `/read?path=${encodeURIComponent(relPath)}`),
+  getNote: (projectId: string, noteId: string) =>
+    apiFetch<Note>(
+      projectPath(projectId, `/notes/${encodeURIComponent(noteId)}`),
     ),
 
-  write: (projectId: string, relPath: string, content: string) =>
-    apiFetch<NotesWriteResponse>(projectPath(projectId, "/write"), {
-      method: "POST",
-      body: JSON.stringify({ path: relPath, content }),
-    }),
-
-  create: (
+  createNote: (
     projectId: string,
-    parentPath: string,
-    name: string,
-    kind: "note" | "folder",
+    body: { title: string; slug?: string; folderId?: string | null },
   ) =>
-    apiFetch<NotesCreateResponse>(projectPath(projectId, "/create"), {
+    apiFetch<Note>(projectPath(projectId, "/notes"), {
       method: "POST",
-      body: JSON.stringify({ parentPath, name, kind }),
+      body: JSON.stringify(body),
     }),
 
-  rename: (projectId: string, from: string, to: string) =>
-    apiFetch<{ ok: boolean; relPath: string; absPath: string }>(
-      projectPath(projectId, "/rename"),
+  updateNote: (projectId: string, noteId: string, body: UpdateNotePayload) =>
+    apiFetch<Note>(
+      projectPath(projectId, `/notes/${encodeURIComponent(noteId)}`),
       {
-        method: "POST",
-        body: JSON.stringify({ from, to }),
+        method: "PUT",
+        body: JSON.stringify(body),
       },
     ),
 
-  delete: (projectId: string, relPath: string) =>
-    apiFetch<{ ok: boolean }>(projectPath(projectId, "/delete"), {
+  transitionNote: (projectId: string, noteId: string, status: NoteStatus) =>
+    apiFetch<Note>(
+      projectPath(projectId, `/notes/${encodeURIComponent(noteId)}/transition`),
+      {
+        method: "POST",
+        body: JSON.stringify({ status }),
+      },
+    ),
+
+  deleteNote: (projectId: string, noteId: string) =>
+    apiFetch<void>(
+      projectPath(projectId, `/notes/${encodeURIComponent(noteId)}`),
+      { method: "DELETE" },
+    ),
+
+  createFolder: (
+    projectId: string,
+    body: { name: string; parentId?: string | null; sortOrder?: number },
+  ) =>
+    apiFetch<NoteFolder>(projectPath(projectId, "/folders"), {
       method: "POST",
-      body: JSON.stringify({ path: relPath }),
+      body: JSON.stringify(body),
     }),
 
-  listComments: (projectId: string, relPath: string) =>
-    apiFetch<NotesComment[]>(
-      projectPath(projectId, `/comments?path=${encodeURIComponent(relPath)}`),
+  updateFolder: (
+    projectId: string,
+    folderId: string,
+    body: UpdateFolderPayload,
+  ) =>
+    apiFetch<NoteFolder>(
+      projectPath(projectId, `/folders/${encodeURIComponent(folderId)}`),
+      {
+        method: "PUT",
+        body: JSON.stringify(body),
+      },
+    ),
+
+  deleteFolder: (projectId: string, folderId: string) =>
+    apiFetch<void>(
+      projectPath(projectId, `/folders/${encodeURIComponent(folderId)}`),
+      { method: "DELETE" },
+    ),
+
+  listComments: (projectId: string, noteId: string) =>
+    apiFetch<NoteComment[]>(
+      projectPath(projectId, `/notes/${encodeURIComponent(noteId)}/comments`),
     ),
 
   addComment: (
     projectId: string,
-    relPath: string,
+    noteId: string,
     body: string,
     authorName?: string,
   ) =>
-    apiFetch<NotesComment>(projectPath(projectId, "/comments"), {
-      method: "POST",
-      body: JSON.stringify({ path: relPath, body, authorName }),
-    }),
+    apiFetch<NoteComment>(
+      projectPath(projectId, `/notes/${encodeURIComponent(noteId)}/comments`),
+      {
+        method: "POST",
+        body: JSON.stringify({ body, authorName }),
+      },
+    ),
 
-  deleteComment: (projectId: string, relPath: string, id: string) =>
-    apiFetch<{ ok: boolean }>(projectPath(projectId, "/comments"), {
-      method: "DELETE",
-      body: JSON.stringify({ path: relPath, id }),
-    }),
+  deleteComment: (projectId: string, noteId: string, commentId: string) =>
+    apiFetch<void>(
+      projectPath(
+        projectId,
+        `/notes/${encodeURIComponent(noteId)}/comments/${encodeURIComponent(commentId)}`,
+      ),
+      { method: "DELETE" },
+    ),
 };

@@ -73,7 +73,6 @@ function makeApi(
     deleteError: null,
     setDeleteError: vi.fn(),
     handleDelete: vi.fn().mockResolvedValue(undefined),
-    parentRelPathFor: () => "",
     ...overrides,
   };
 }
@@ -94,8 +93,8 @@ describe("NotesEntryModals", () => {
       renameTarget: {
         kind: "note",
         projectId: "p1",
-        relPath: "a.md",
-        name: "a.md",
+        id: "note-1",
+        name: "a",
       },
     });
     render(<NotesEntryModals actions={api} />);
@@ -111,8 +110,8 @@ describe("NotesEntryModals", () => {
       deleteTarget: {
         kind: "note",
         projectId: "p1",
-        relPath: "a.md",
-        name: "a.md",
+        id: "note-1",
+        name: "a",
       },
     });
     render(<NotesEntryModals actions={api} />);
@@ -126,7 +125,7 @@ describe("NotesEntryModals", () => {
       deleteTarget: {
         kind: "folder",
         projectId: "p1",
-        relPath: "ideas",
+        id: "folder-1",
         name: "ideas",
       },
     });
@@ -142,8 +141,8 @@ describe("NotesEntryModals", () => {
       deleteTarget: {
         kind: "note",
         projectId: "p1",
-        relPath: "a.md",
-        name: "a.md",
+        id: "note-1",
+        name: "a",
       },
     });
     render(<NotesEntryModals actions={api} />);
@@ -156,8 +155,8 @@ describe("NotesEntryModals", () => {
       deleteTarget: {
         kind: "note",
         projectId: "p1",
-        relPath: "a.md",
-        name: "a.md",
+        id: "note-1",
+        name: "a",
       },
     });
     render(<NotesEntryModals actions={api} />);

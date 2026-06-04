@@ -1,16 +1,17 @@
 import { render } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 
-const mockActiveKey = { value: null as { projectId: string; relPath: string } | null };
+const mockActiveKey = { value: null as { projectId: string; noteId: string } | null };
 const mockTrees: Record<
   string,
   {
     loading: boolean;
-    nodes: Array<{ kind: "note"; relPath: string } | { kind: "folder"; relPath: string; children: never[] }>;
+    folders: Array<{ id: string }>;
+    notes: Array<{ id: string; folderId?: string | null; title?: string; sortOrder?: number }>;
   }
 > = {};
 const mockProjects: Array<{ project_id: string }> = [];
-const mockStoredNote = { value: null as { projectId: string; relPath: string } | null };
+const mockStoredNote = { value: null as { projectId: string; noteId: string } | null };
 
 vi.mock("../../../stores/notes-store", () => ({
   useActiveNoteKey: () => mockActiveKey.value,
@@ -58,29 +59,30 @@ describe("NotesIndexRedirect", () => {
   });
 
   it("navigates to the active note's canonical URL when available", () => {
-    mockActiveKey.value = { projectId: "p1", relPath: "folder/note.md" };
+    mockActiveKey.value = { projectId: "p1", noteId: "note-abc" };
 
     const { getByTestId } = renderAt("/notes");
 
-    expect(getByTestId("pathname").textContent).toBe("/notes/p1/folder%2Fnote.md");
+    expect(getByTestId("pathname").textContent).toBe("/notes/p1/note-abc");
   });
 
   it("falls back to the first project note when no active or stored note exists", () => {
     mockProjects.push({ project_id: "p2" });
     mockTrees.p2 = {
       loading: false,
-      nodes: [{ kind: "note", relPath: "todo.md" }],
+      folders: [],
+      notes: [{ id: "todo-1" }],
     };
 
     const { getByTestId } = renderAt("/notes");
 
-    expect(getByTestId("pathname").textContent).toBe("/notes/p2/todo.md");
+    expect(getByTestId("pathname").textContent).toBe("/notes/p2/todo-1");
   });
 
   it("stays on /notes when trees are still loading", () => {
     mockProjects.push({ project_id: "p3" });
-    mockTrees.p3 = { loading: true, nodes: [] };
-    mockStoredNote.value = { projectId: "p3", relPath: "draft.md" };
+    mockTrees.p3 = { loading: true, folders: [], notes: [] };
+    mockStoredNote.value = { projectId: "p3", noteId: "draft-1" };
 
     const { getByTestId } = renderAt("/notes");
 

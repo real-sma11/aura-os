@@ -1,10 +1,10 @@
 import { useRef } from "react";
 import { OverlayScrollbar } from "../../../components/OverlayScrollbar";
 import { useAuthStore } from "../../../stores/auth-store";
-import { useActiveNote, useNotesStore } from "../../../stores/notes-store";
+import { useActiveNote } from "../../../stores/notes-store";
 import styles from "./NotesInfoPanel.module.css";
 
-function formatDate(iso?: string): string {
+function formatDate(iso?: string | null): string {
   if (!iso) return "—";
   try {
     return new Date(iso).toLocaleString([], {
@@ -17,7 +17,7 @@ function formatDate(iso?: string): string {
 }
 
 /** Date-only formatter for the "Created at" row (time is redundant there). */
-function formatDateOnly(iso?: string): string {
+function formatDateOnly(iso?: string | null): string {
   if (!iso) return "—";
   try {
     return new Date(iso).toLocaleDateString([], { dateStyle: "medium" });
@@ -30,13 +30,12 @@ const UUID_RE =
   /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
 /**
- * Display the `created_by` frontmatter value, falling back to the current
- * user's display name when the stored value is still a raw user_id from the
- * pre-display-name era. Any other non-empty string is passed through, so
- * display names authored by other users still render correctly.
+ * Resolve the note's author/creator for display, falling back to the
+ * current user's display name when the stored value is still a raw
+ * user_id from the pre-display-name era.
  */
 function resolveCreatedBy(
-  value: string | undefined,
+  value: string | null | undefined,
   selfUserId: string | null | undefined,
   selfDisplayName: string | null | undefined,
 ): string {
@@ -47,9 +46,14 @@ function resolveCreatedBy(
   return value;
 }
 
+/** Title-case a status string (e.g. "draft" -> "Draft"). */
+function formatStatus(status?: string | null): string {
+  if (!status) return "—";
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
 export function NotesInfoPanel() {
   const note = useActiveNote();
-  const revealInFolder = useNotesStore((s) => s.revealInFolder);
   const user = useAuthStore((s) => s.user);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -59,8 +63,9 @@ export function NotesInfoPanel() {
     return <div className={styles.panel} />;
   }
 
+  const meta = note.note;
   const createdBy = resolveCreatedBy(
-    note.frontmatter.created_by,
+    meta.authorName ?? meta.createdBy,
     user?.user_id,
     user?.display_name,
   );
@@ -73,20 +78,9 @@ export function NotesInfoPanel() {
           <span className={styles.infoValue}>{note.title || "Untitled"}</span>
         </div>
         <div className={styles.infoRow}>
-          <span className={styles.infoLabel}>Location</span>
-          <button
-            type="button"
-            className={styles.pathButton}
-            onClick={() => void revealInFolder(note.absPath)}
-            title="Open containing folder"
-          >
-            {note.absPath}
-          </button>
-        </div>
-        <div className={styles.infoRow}>
           <span className={styles.infoLabel}>Created at</span>
           <span className={styles.infoValue}>
-            {formatDateOnly(note.frontmatter.created_at)}
+            {formatDateOnly(meta.createdAt)}
           </span>
         </div>
         <div className={styles.infoRow}>
@@ -100,6 +94,10 @@ export function NotesInfoPanel() {
         <div className={styles.infoRow}>
           <span className={styles.infoLabel}>Word count</span>
           <span className={styles.infoValue}>{note.wordCount}</span>
+        </div>
+        <div className={styles.infoRow}>
+          <span className={styles.infoLabel}>Status</span>
+          <span className={styles.infoValue}>{formatStatus(meta.status)}</span>
         </div>
       </div>
       <OverlayScrollbar scrollRef={scrollRef} />

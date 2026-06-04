@@ -19,8 +19,8 @@ export function NotesEntryModals({ actions }: NotesEntryModalsProps) {
           target={{
             id:
               renameTarget.kind === "note"
-                ? noteIdFor(renameTarget.projectId, renameTarget.relPath)
-                : folderIdFor(renameTarget.projectId, renameTarget.relPath),
+                ? noteIdFor(renameTarget.projectId, renameTarget.id)
+                : folderIdFor(renameTarget.projectId, renameTarget.id),
             name: renameTarget.name,
           }}
           onSave={(name) => void actions.handleRenameSave(name)}

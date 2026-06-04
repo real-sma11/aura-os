@@ -10,17 +10,16 @@ import { useNotesStore, makeNoteKey } from "../../../stores/notes-store";
 
 function seedActiveNote(content: string) {
   const projectId = "proj-1";
-  const relPath = "Notes/Idea.md";
-  const key = makeNoteKey(projectId, relPath);
+  const noteId = "note-1";
+  const key = makeNoteKey(projectId, noteId);
   useNotesStore.setState({
     activeProjectId: projectId,
-    activeRelPath: relPath,
+    activeNoteId: noteId,
     contentCache: {
       [key]: {
         content,
         title: "Big Ideas",
-        absPath: "C:/projects/proj-1/Notes/Idea.md",
-        frontmatter: {},
+        note: { id: noteId, projectId, title: "Big Ideas" },
         updatedAt: undefined,
         wordCount: 0,
         dirty: false,
@@ -33,7 +32,7 @@ describe("NotesTocPanel", () => {
   beforeEach(() => {
     useNotesStore.setState({
       activeProjectId: null,
-      activeRelPath: null,
+      activeNoteId: null,
       contentCache: {},
     });
     document.body.innerHTML = "";

@@ -116,7 +116,7 @@ export function clearLastProcessId(): void {
 
 export interface LastNoteRef {
   projectId: string;
-  relPath: string;
+  noteId: string;
 }
 
 export function getLastNote(): LastNoteRef | null {
@@ -128,11 +128,11 @@ export function getLastNote(): LastNoteRef | null {
       parsed &&
       typeof parsed === "object" &&
       typeof parsed.projectId === "string" &&
-      typeof parsed.relPath === "string" &&
+      typeof parsed.noteId === "string" &&
       parsed.projectId &&
-      parsed.relPath
+      parsed.noteId
     ) {
-      return { projectId: parsed.projectId, relPath: parsed.relPath };
+      return { projectId: parsed.projectId, noteId: parsed.noteId };
     }
   } catch {
     // ignore malformed data

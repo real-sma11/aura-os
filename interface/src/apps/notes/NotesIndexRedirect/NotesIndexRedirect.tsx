@@ -6,39 +6,30 @@ import {
 } from "../../../stores/notes-store";
 import { useProjectsListStore } from "../../../stores/projects-list-store";
 import { getLastNote } from "../../../utils/storage";
-import type { NotesTreeNode } from "../../../shared/api/notes";
+import type { NotesProjectTree } from "../../../stores/notes-store";
 
-function findFirstNoteRelPath(nodes: NotesTreeNode[]): string | null {
-  for (const node of nodes) {
-    if (node.kind === "note") return node.relPath;
-    const found = findFirstNoteRelPath(node.children);
-    if (found) return found;
-  }
-  return null;
+/** Sort notes by `sortOrder` then title, returning the first note's id. */
+function firstNoteId(tree: NotesProjectTree): string | null {
+  if (tree.notes.length === 0) return null;
+  const sorted = [...tree.notes].sort((a, b) => {
+    const ao = a.sortOrder ?? 0;
+    const bo = b.sortOrder ?? 0;
+    if (ao !== bo) return ao - bo;
+    return (a.title ?? "").localeCompare(b.title ?? "");
+  });
+  return sorted[0]?.id ?? null;
 }
 
-function treeContainsNote(nodes: NotesTreeNode[], relPath: string): boolean {
-  for (const node of nodes) {
-    if (node.kind === "note" && node.relPath === relPath) return true;
-    if (node.kind === "folder" && treeContainsNote(node.children, relPath)) {
-      return true;
-    }
-  }
-  return false;
+function treeContainsNote(tree: NotesProjectTree, noteId: string): boolean {
+  return tree.notes.some((n) => n.id === noteId);
 }
 
 /**
- * Route element mounted at `/notes` and `/notes/:projectId`. Picks a sensible
- * note to display and redirects to its canonical URL:
+ * Route element mounted at `/notes` and `/notes/:projectId`. Picks a
+ * sensible note to display and redirects to its canonical URL:
  *   1. The session-active note from the notes store.
- *   2. The last note persisted in localStorage, if it still exists in the tree.
+ *   2. The last note persisted in localStorage, if it still exists.
  *   3. The first note found in any project's loaded tree.
- *
- * Lives here (instead of in `NotesMainPanel`) so the auto-select effect is
- * scoped to the Notes app's own routes. Previously the effect ran from
- * `NotesMainPanel`, which stayed mounted for one render after the user
- * navigated away — allowing it to redirect back into `/notes/...` and cancel
- * the pending route change (the "Notes → Feedback flicker" bug).
  */
 export function NotesIndexRedirect() {
   const navigate = useNavigate();
@@ -48,9 +39,9 @@ export function NotesIndexRedirect() {
   const projects = useProjectsListStore((s) => s.projects);
 
   useEffect(() => {
-    if (activeKey?.projectId && activeKey.relPath) {
+    if (activeKey?.projectId && activeKey.noteId) {
       navigate(
-        `/notes/${activeKey.projectId}/${encodeURIComponent(activeKey.relPath)}`,
+        `/notes/${activeKey.projectId}/${encodeURIComponent(activeKey.noteId)}`,
         { replace: true },
       );
       return;
@@ -59,9 +50,9 @@ export function NotesIndexRedirect() {
     const stored = getLastNote();
     if (stored) {
       const tree = trees[stored.projectId];
-      if (tree && !tree.loading && treeContainsNote(tree.nodes, stored.relPath)) {
+      if (tree && !tree.loading && treeContainsNote(tree, stored.noteId)) {
         navigate(
-          `/notes/${stored.projectId}/${encodeURIComponent(stored.relPath)}`,
+          `/notes/${stored.projectId}/${encodeURIComponent(stored.noteId)}`,
           { replace: true },
         );
         return;
@@ -79,7 +70,7 @@ export function NotesIndexRedirect() {
     for (const project of orderedProjects) {
       const tree = trees[project.project_id];
       if (!tree || tree.loading) continue;
-      const first = findFirstNoteRelPath(tree.nodes);
+      const first = firstNoteId(tree);
       if (first) {
         navigate(
           `/notes/${project.project_id}/${encodeURIComponent(first)}`,

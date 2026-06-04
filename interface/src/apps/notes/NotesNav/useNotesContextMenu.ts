@@ -11,17 +11,13 @@ import { useNavigate } from "react-router-dom";
 import type { useProjectListActions } from "../../../hooks/use-project-list-actions";
 import type { Project } from "../../../shared/types";
 import { useNotesStore } from "../../../stores/notes-store";
-import {
-  leafName,
-  parentRelPath,
-  parseNotesExplorerId,
-  renameRelPath,
-} from "./notes-explorer-ids";
+import { parseNotesExplorerId } from "./notes-explorer-ids";
 
 export interface NotesEntryTarget {
   kind: "note" | "folder";
   projectId: string;
-  relPath: string;
+  /** The noteId or folderId of the targeted entry. */
+  id: string;
   name: string;
 }
 
@@ -53,7 +49,26 @@ export interface NotesContextMenuApi {
   deleteError: string | null;
   setDeleteError: (error: string | null) => void;
   handleDelete: () => Promise<void>;
-  parentRelPathFor: (relPath: string) => string;
+}
+
+/**
+ * Resolve the display name of a note/folder from the loaded tree. Notes
+ * fall back to "Untitled" and folders to "Untitled folder" when the row
+ * has no title/name yet.
+ */
+function resolveEntryName(
+  projectId: string,
+  kind: "note" | "folder",
+  id: string,
+): string {
+  const tree = useNotesStore.getState().trees[projectId];
+  if (!tree) return kind === "folder" ? "Untitled folder" : "Untitled";
+  if (kind === "note") {
+    const note = tree.notes.find((n) => n.id === id);
+    return note?.title?.trim() || "Untitled";
+  }
+  const folder = tree.folders.find((f) => f.id === id);
+  return folder?.name?.trim() || "Untitled folder";
 }
 
 export function useNotesContextMenu({
@@ -127,8 +142,8 @@ export function useNotesContextMenu({
         target: {
           kind: parsed.kind,
           projectId: parsed.projectId,
-          relPath: parsed.relPath,
-          name: leafName(parsed.relPath, parsed.kind),
+          id: parsed.id,
+          name: resolveEntryName(parsed.projectId, parsed.kind, parsed.id),
         },
       });
     },
@@ -156,8 +171,8 @@ export function useNotesContextMenu({
       setRenameTarget({
         kind: parsed.kind,
         projectId: parsed.projectId,
-        relPath: parsed.relPath,
-        name: leafName(parsed.relPath, parsed.kind),
+        id: parsed.id,
+        name: resolveEntryName(parsed.projectId, parsed.kind, parsed.id),
       });
     },
     [projectActions, projectMap],
@@ -179,23 +194,11 @@ export function useNotesContextMenu({
         setDeleteError(null);
         return;
       }
-      if (actionId === "reveal" && target.kind === "note") {
-        const { projectId, relPath } = target;
-        void useNotesStore
-          .getState()
-          .readNote(projectId, relPath)
-          .then((note) => {
-            if (note?.absPath) {
-              void useNotesStore.getState().revealInFolder(note.absPath);
-            }
-          });
-        return;
-      }
       if (actionId === "new-note" && target.kind === "folder") {
-        void createNote(target.projectId, target.relPath).then((res) => {
+        void createNote(target.projectId, target.id).then((res) => {
           if (res) {
             navigate(
-              `/notes/${target.projectId}/${encodeURIComponent(res.relPath)}`,
+              `/notes/${target.projectId}/${encodeURIComponent(res.noteId)}`,
             );
           }
         });
@@ -204,7 +207,7 @@ export function useNotesContextMenu({
       if (actionId === "new-folder" && target.kind === "folder") {
         const name = window.prompt("New folder name");
         if (!name || !name.trim()) return;
-        void createFolder(target.projectId, target.relPath, name.trim());
+        void createFolder(target.projectId, target.id, name.trim());
       }
     },
     [createFolder, createNote, navigate],
@@ -215,9 +218,9 @@ export function useNotesContextMenu({
       const target = renameTarget;
       setRenameTarget(null);
       if (!target) return;
-      const to = renameRelPath(target.relPath, newName, target.kind);
-      if (to === target.relPath || !to) return;
-      await renameEntry(target.projectId, target.relPath, to);
+      const trimmed = newName.trim();
+      if (!trimmed || trimmed === target.name) return;
+      await renameEntry(target.projectId, target.kind, target.id, trimmed);
     },
     [renameEntry, renameTarget],
   );
@@ -228,16 +231,14 @@ export function useNotesContextMenu({
     setDeleteLoading(true);
     setDeleteError(null);
     try {
-      await deleteEntry(target.projectId, target.relPath);
-      // If the deleted folder contained the active note, clear stale selection.
-      if (target.kind === "folder") {
-        const { activeProjectId, activeRelPath } = useNotesStore.getState();
-        if (
-          activeProjectId === target.projectId &&
-          activeRelPath &&
-          (activeRelPath === target.relPath ||
-            activeRelPath.startsWith(`${target.relPath}/`))
-        ) {
+      await deleteEntry(target.projectId, target.kind, target.id);
+      // If the active note no longer exists after the delete (e.g. it lived
+      // inside a deleted folder), clear the stale selection.
+      const { activeProjectId, activeNoteId, trees } = useNotesStore.getState();
+      if (activeProjectId === target.projectId && activeNoteId) {
+        const tree = trees[target.projectId];
+        const stillExists = tree?.notes.some((n) => n.id === activeNoteId);
+        if (!stillExists) {
           useNotesStore.getState().selectNote(target.projectId, null);
         }
       }
@@ -266,8 +267,5 @@ export function useNotesContextMenu({
     deleteError,
     setDeleteError,
     handleDelete,
-    // Helper for NotesNav-level flows that want to reuse the parent path for
-    // folder-aware "New note" creation (e.g. keyboard shortcuts).
-    parentRelPathFor: (relPath: string) => parentRelPath(relPath),
   };
 }

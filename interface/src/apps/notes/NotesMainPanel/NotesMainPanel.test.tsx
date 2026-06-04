@@ -57,14 +57,14 @@ import { NotesMainPanel } from "./NotesMainPanel";
 import { useNotesStore, makeNoteKey } from "../../../stores/notes-store";
 
 const projectId = "proj-1";
-const relPath = "note.md";
+const noteId = "note-1";
 
 function renderAt(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route
-          path="/notes/:projectId/:notePath"
+          path="/notes/:projectId/:noteId"
           element={<NotesMainPanel />}
         />
         <Route
@@ -77,16 +77,15 @@ function renderAt(path: string) {
 }
 
 function seedNote(content: string) {
-  const key = makeNoteKey(projectId, relPath);
+  const key = makeNoteKey(projectId, noteId);
   useNotesStore.setState({
     activeProjectId: projectId,
-    activeRelPath: relPath,
+    activeNoteId: noteId,
     contentCache: {
       [key]: {
         content,
         title: "",
-        absPath: "/root/note.md",
-        frontmatter: {},
+        note: { id: noteId, projectId, title: "" },
         updatedAt: undefined,
         wordCount: 0,
         dirty: false,
@@ -99,7 +98,7 @@ describe("NotesMainPanel", () => {
   beforeEach(() => {
     useNotesStore.setState({
       activeProjectId: null,
-      activeRelPath: null,
+      activeNoteId: null,
       contentCache: {},
       selectNote: vi.fn(),
       updateContent: vi.fn(),
@@ -116,7 +115,7 @@ describe("NotesMainPanel", () => {
 
   it("renders Rich/Markdown mode tabs when a note is selected", () => {
     seedNote("# Hi");
-    renderAt(`/notes/${projectId}/${encodeURIComponent(relPath)}`);
+    renderAt(`/notes/${projectId}/${encodeURIComponent(noteId)}`);
     const tablist = screen.getByRole("tablist", { name: "Editor mode" });
     expect(tablist).toBeInTheDocument();
     expect(
@@ -129,7 +128,7 @@ describe("NotesMainPanel", () => {
 
   it("swaps to a plain textarea when the user flips to Markdown mode", () => {
     seedNote("Line 1\nLine 2");
-    renderAt(`/notes/${projectId}/${encodeURIComponent(relPath)}`);
+    renderAt(`/notes/${projectId}/${encodeURIComponent(noteId)}`);
     fireEvent.click(screen.getByRole("tab", { name: "Markdown" }));
     expect(
       screen.getByRole("textbox", { name: "Note body (markdown)" }),
@@ -140,12 +139,12 @@ describe("NotesMainPanel", () => {
     const updateContent = vi.fn();
     useNotesStore.setState({ updateContent });
     seedNote("start");
-    renderAt(`/notes/${projectId}/${encodeURIComponent(relPath)}`);
+    renderAt(`/notes/${projectId}/${encodeURIComponent(noteId)}`);
     fireEvent.click(screen.getByRole("tab", { name: "Markdown" }));
     fireEvent.change(
       screen.getByRole("textbox", { name: "Note body (markdown)" }),
       { target: { value: "edited" } },
     );
-    expect(updateContent).toHaveBeenCalledWith(projectId, relPath, "edited");
+    expect(updateContent).toHaveBeenCalledWith(projectId, noteId, "edited");
   });
 });

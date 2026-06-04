@@ -2,7 +2,7 @@ import type { StateCreator } from "zustand";
 import { api } from "../../api/client";
 import { isAuraCaptureSessionActive } from "../../lib/screenshot-bridge";
 import { clearLastNote } from "../../utils/storage";
-import { emptyProjectTree, type NotesProjectTree } from "./notes-utils";
+import { emptyProjectTree, slugify, type NotesProjectTree } from "./notes-utils";
 import type { NotesStore } from "./notes-store";
 
 export interface TreeSlice {
@@ -10,27 +10,34 @@ export interface TreeSlice {
   loadTree: (projectId: string) => Promise<void>;
   createNote: (
     projectId: string,
-    parentPath: string,
-    name?: string,
-  ) => Promise<{ relPath: string } | null>;
+    folderId: string | null,
+    title?: string,
+  ) => Promise<{ noteId: string } | null>;
   createFolder: (
     projectId: string,
-    parentPath: string,
+    parentId: string | null,
     name: string,
-  ) => Promise<{ relPath: string } | null>;
-  deleteEntry: (projectId: string, relPath: string) => Promise<void>;
+  ) => Promise<{ folderId: string } | null>;
+  deleteEntry: (
+    projectId: string,
+    kind: "note" | "folder",
+    id: string,
+  ) => Promise<void>;
   renameEntry: (
     projectId: string,
-    from: string,
-    to: string,
-  ) => Promise<{ relPath: string } | null>;
+    kind: "note" | "folder",
+    id: string,
+    name: string,
+  ) => Promise<void>;
+  /** Patch a note's title in the loaded tree without a full reload. */
+  patchNoteTitle: (projectId: string, noteId: string, title: string) => void;
 }
 
 /**
- * Tree CRUD slice — owns the per-project notes tree (`trees`) and the
- * actions that mutate the on-disk note hierarchy. Cross-slice
- * `selectNote` / `clearLastNote` cleanup on delete is reached through
- * `get()` so we don't duplicate that logic here.
+ * Tree CRUD slice — owns the per-project notes tree (`trees`, holding
+ * raw `folders` + `notes` rows) and the ID-based actions that mutate
+ * the note hierarchy. Cross-slice `selectNote` / `clearLastNote`
+ * cleanup on delete is reached through `get()`.
  */
 export const createTreeSlice: StateCreator<NotesStore, [], [], TreeSlice> = (
   set,
@@ -68,8 +75,8 @@ export const createTreeSlice: StateCreator<NotesStore, [], [], TreeSlice> = (
         trees: {
           ...state.trees,
           [projectId]: {
-            nodes: res.nodes,
-            root: res.root,
+            folders: res.folders,
+            notes: res.notes,
             loading: false,
             titleOverrides: state.trees[projectId]?.titleOverrides ?? {},
           },
@@ -89,56 +96,92 @@ export const createTreeSlice: StateCreator<NotesStore, [], [], TreeSlice> = (
     }
   },
 
-  createNote: async (projectId, parentPath, name) => {
+  createNote: async (projectId, folderId, title) => {
     try {
-      const res = await api.notes.create(
-        projectId,
-        parentPath,
-        name ?? "Untitled",
-        "note",
-      );
+      const resolvedTitle = title?.trim() || "Untitled";
+      const note = await api.notes.createNote(projectId, {
+        title: resolvedTitle,
+        slug: slugify(resolvedTitle) || undefined,
+        folderId: folderId ?? undefined,
+      });
       await get().loadTree(projectId);
-      get().selectNote(projectId, res.relPath);
-      return { relPath: res.relPath };
+      get().selectNote(projectId, note.id);
+      return { noteId: note.id };
     } catch (err) {
       console.warn("create note failed", err);
       return null;
     }
   },
 
-  createFolder: async (projectId, parentPath, name) => {
+  createFolder: async (projectId, parentId, name) => {
     try {
-      const res = await api.notes.create(projectId, parentPath, name, "folder");
+      const folder = await api.notes.createFolder(projectId, {
+        name,
+        parentId: parentId ?? undefined,
+      });
       await get().loadTree(projectId);
-      return { relPath: res.relPath };
+      return { folderId: folder.id };
     } catch (err) {
       console.warn("create folder failed", err);
       return null;
     }
   },
 
-  deleteEntry: async (projectId, relPath) => {
+  deleteEntry: async (projectId, kind, id) => {
     try {
-      await api.notes.delete(projectId, relPath);
+      if (kind === "note") {
+        await api.notes.deleteNote(projectId, id);
+      } else {
+        await api.notes.deleteFolder(projectId, id);
+      }
       await get().loadTree(projectId);
-      const { activeProjectId, activeRelPath } = get();
-      if (activeProjectId === projectId && activeRelPath === relPath) {
-        set({ activeRelPath: null });
+      const { activeProjectId, activeNoteId } = get();
+      if (
+        kind === "note" &&
+        activeProjectId === projectId &&
+        activeNoteId === id
+      ) {
+        set({ activeNoteId: null });
         clearLastNote();
       }
     } catch (err) {
-      console.warn("delete note failed", err);
+      console.warn("delete entry failed", err);
+      throw err;
     }
   },
 
-  renameEntry: async (projectId, from, to) => {
+  renameEntry: async (projectId, kind, id, name) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
     try {
-      const res = await api.notes.rename(projectId, from, to);
+      if (kind === "note") {
+        await api.notes.updateNote(projectId, id, {
+          title: trimmed,
+          slug: slugify(trimmed) || undefined,
+        });
+      } else {
+        await api.notes.updateFolder(projectId, id, { name: trimmed });
+      }
       await get().loadTree(projectId);
-      return { relPath: res.relPath };
     } catch (err) {
-      console.warn("rename note failed", err);
-      return null;
+      console.warn("rename entry failed", err);
     }
+  },
+
+  patchNoteTitle: (projectId, noteId, title) => {
+    set((state) => {
+      const tree = state.trees[projectId];
+      if (!tree) return state;
+      let changed = false;
+      const notes = tree.notes.map((n) => {
+        if (n.id !== noteId || n.title === title) return n;
+        changed = true;
+        return { ...n, title };
+      });
+      if (!changed) return state;
+      return {
+        trees: { ...state.trees, [projectId]: { ...tree, notes } },
+      };
+    });
   },
 });

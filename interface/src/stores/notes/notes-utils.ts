@@ -1,17 +1,14 @@
-import type {
-  NoteFrontmatter,
-  NotesTreeNode,
-} from "../../shared/api/notes";
+import type { Note, NoteFolder } from "../../shared/api/notes";
 
 export const AUTOSAVE_DEBOUNCE_MS = 600;
 
 export interface NoteKey {
   projectId: string;
-  relPath: string;
+  noteId: string;
 }
 
-export function makeNoteKey(projectId: string, relPath: string): string {
-  return `${projectId}::${relPath}`;
+export function makeNoteKey(projectId: string, noteId: string): string {
+  return `${projectId}::${noteId}`;
 }
 
 export function parseNoteKey(key: string): NoteKey | null {
@@ -19,13 +16,8 @@ export function parseNoteKey(key: string): NoteKey | null {
   if (sepIndex === -1) return null;
   return {
     projectId: key.slice(0, sepIndex),
-    relPath: key.slice(sepIndex + 2),
+    noteId: key.slice(sepIndex + 2),
   };
-}
-
-export function basename(relPath: string): string {
-  const idx = relPath.lastIndexOf("/");
-  return idx === -1 ? relPath : relPath.slice(idx + 1);
 }
 
 export function isErrorWithStatus(err: unknown): err is { status: number } {
@@ -38,73 +30,38 @@ export function isErrorWithStatus(err: unknown): err is { status: number } {
 }
 
 /**
- * Return a new nodes array with the note at `fromRelPath` renamed to
- * `toRelPath` (updating name/absPath/title/updatedAt). Returns the same
- * reference if no note matched, so callers can skip updating state.
+ * Per-note content + autosave cache entry. The markdown body lives on
+ * S3; `content` is the body text fetched from `note.bodyUrl`, and
+ * `note` is the latest metadata row from the API.
  */
-export function renameNoteInNodes(
-  nodes: NotesTreeNode[],
-  fromRelPath: string,
-  toRelPath: string,
-  nextAbsPath: string,
-  nextTitle: string,
-  nextUpdatedAt: string | undefined,
-): NotesTreeNode[] {
-  let changed = false;
-  const next = nodes.map((node): NotesTreeNode => {
-    if (node.kind === "folder") {
-      const updatedChildren = renameNoteInNodes(
-        node.children,
-        fromRelPath,
-        toRelPath,
-        nextAbsPath,
-        nextTitle,
-        nextUpdatedAt,
-      );
-      if (updatedChildren !== node.children) {
-        changed = true;
-        return { ...node, children: updatedChildren };
-      }
-      return node;
-    }
-    if (node.relPath !== fromRelPath) return node;
-    changed = true;
-    return {
-      ...node,
-      relPath: toRelPath,
-      name: basename(toRelPath),
-      absPath: nextAbsPath,
-      title: nextTitle,
-      updatedAt: nextUpdatedAt ?? node.updatedAt,
-    };
-  });
-  return changed ? next : nodes;
-}
-
 export interface NoteContent {
   content: string;
   title: string;
-  frontmatter: NoteFrontmatter;
-  absPath: string;
+  /** Latest note metadata row from the API. */
+  note: Note;
   updatedAt?: string;
   wordCount: number;
-  /** Local-only draft that hasn't been flushed to disk yet. */
+  /** Local-only draft that hasn't been flushed (uploaded) yet. */
   dirty: boolean;
   /** Most recent autosave error, if any. */
   error?: string;
 }
 
+/**
+ * Per-project notes tree: the raw `folders` + `notes` rows from the
+ * `/tree` endpoint plus load state and any live title overrides driven
+ * by in-progress edits (keyed by noteId).
+ */
 export interface NotesProjectTree {
-  nodes: NotesTreeNode[];
-  root: string;
+  folders: NoteFolder[];
+  notes: Note[];
   loading: boolean;
   error?: string;
-  /** Local overrides for derived titles (driven by live edits to line 1). */
   titleOverrides: Record<string, string>;
 }
 
 export function emptyProjectTree(): NotesProjectTree {
-  return { nodes: [], root: "", loading: true, titleOverrides: {} };
+  return { folders: [], notes: [], loading: true, titleOverrides: {} };
 }
 
 /** Extract a display title from the first non-empty line of markdown content. */
@@ -132,17 +89,26 @@ export function countWords(body: string): number {
 }
 
 /**
+ * Derive a URL-safe slug from a title: lowercase, non-alphanumerics
+ * collapsed to single hyphens, trimmed. Falls back to `""` when the
+ * title has no usable characters (callers substitute the noteId).
+ */
+export function slugify(title: string): string {
+  return title
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/**
  * Per-note debounce timers shared by the content slice's autosave path.
- * Lives at module scope so successive calls collapse onto the same
- * timer key, and so a rename operation can transplant a pending timer
- * onto the new key without losing the in-flight write.
+ * Lives at module scope so successive edits collapse onto the same
+ * timer key.
  */
 export const pendingTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-export function schedulePersist(
-  key: string,
-  run: () => void,
-): void {
+export function schedulePersist(key: string, run: () => void): void {
   const existing = pendingTimers.get(key);
   if (existing) clearTimeout(existing);
   const timer = setTimeout(() => {

@@ -20,7 +20,7 @@ import {
   useNotesStore,
   type NotesProjectTree,
 } from "../../../stores/notes-store";
-import type { NotesTreeNode } from "../../../shared/api/notes";
+import type { Note, NoteFolder } from "../../../shared/api/notes";
 import {
   folderIdFor,
   noteIdFor,
@@ -46,47 +46,96 @@ function hoverPlusSuffix(onClick: () => void, title: string): ExplorerNode["suff
   );
 }
 
-function buildTreeNodes(
+/** Order folders/notes by `sortOrder` (nulls last-ish as 0) then label. */
+function compareByOrderThenLabel(
+  aOrder: number | null | undefined,
+  aLabel: string,
+  bOrder: number | null | undefined,
+  bLabel: string,
+): number {
+  const ao = aOrder ?? 0;
+  const bo = bOrder ?? 0;
+  if (ao !== bo) return ao - bo;
+  return aLabel.localeCompare(bLabel);
+}
+
+/**
+ * Build the ExplorerNode children for a single folder level. Folders nest
+ * via `parentId`; notes are placed under their `folderId` (or the project
+ * root when `folderId` is null). `parentId === null` builds the project
+ * root level. Live edits surface through `titleOverrides` (keyed by noteId).
+ */
+function buildFolderChildren(
   projectId: string,
-  nodes: NotesTreeNode[],
+  parentId: string | null,
+  folders: NoteFolder[],
+  notes: Note[],
   titleOverrides: Record<string, string>,
-  onCreateInFolder: (parentPath: string) => void,
+  onCreateInFolder: (folderId: string) => void,
 ): ExplorerNode[] {
-  return nodes.map((node) => {
-    if (node.kind === "folder") {
-      return {
-        id: folderIdFor(projectId, node.relPath),
-        label: node.name,
-        icon: <FolderClosed size={14} aria-hidden="true" />,
-        metadata: { variant: "default", type: "folder" },
-        suffix: hoverPlusSuffix(
-          () => onCreateInFolder(node.relPath),
-          `New note in ${node.name}`,
-        ),
-        children: buildTreeNodes(
-          projectId,
-          node.children,
-          titleOverrides,
-          onCreateInFolder,
-        ),
-      };
-    }
-    const override = titleOverrides[node.relPath];
-    const displayLabel =
-      (override && override.trim()) ||
-      (node.title && node.title.trim()) ||
-      node.name.replace(/\.md$/, "");
-    return {
-      id: noteIdFor(projectId, node.relPath),
-      label: displayLabel,
+  const childFolders = folders
+    .filter((f) => (f.parentId ?? null) === parentId)
+    .map((folder) => {
+      const label = folder.name?.trim() || "Untitled folder";
+      return { folder, label };
+    })
+    .sort((a, b) =>
+      compareByOrderThenLabel(
+        a.folder.sortOrder,
+        a.label,
+        b.folder.sortOrder,
+        b.label,
+      ),
+    )
+    .map(({ folder, label }) => ({
+      id: folderIdFor(projectId, folder.id),
+      label,
+      icon: <FolderClosed size={14} aria-hidden="true" />,
+      metadata: { variant: "default", type: "folder" },
+      suffix: hoverPlusSuffix(
+        () => onCreateInFolder(folder.id),
+        `New note in ${label}`,
+      ),
+      children: buildFolderChildren(
+        projectId,
+        folder.id,
+        folders,
+        notes,
+        titleOverrides,
+        onCreateInFolder,
+      ),
+    }));
+
+  const childNotes = notes
+    .filter((n) => (n.folderId ?? null) === parentId)
+    .map((note) => {
+      const override = titleOverrides[note.id];
+      const label =
+        (override && override.trim()) ||
+        (note.title && note.title.trim()) ||
+        "Untitled";
+      return { note, label };
+    })
+    .sort((a, b) =>
+      compareByOrderThenLabel(
+        a.note.sortOrder,
+        a.label,
+        b.note.sortOrder,
+        b.label,
+      ),
+    )
+    .map(({ note, label }) => ({
+      id: noteIdFor(projectId, note.id),
+      label,
       icon: <FileText size={14} aria-hidden="true" />,
       metadata: { type: "note" },
-    };
-  });
+    }));
+
+  return [...childFolders, ...childNotes];
 }
 
 interface NotesNavProps {
-  onCreateNote?: (projectId: string, parentPath: string) => void;
+  onCreateNote?: (projectId: string, folderId: string | null) => void;
 }
 
 export function NotesNav({ onCreateNote }: NotesNavProps = {}) {
@@ -101,7 +150,7 @@ export function NotesNav({ onCreateNote }: NotesNavProps = {}) {
   const loadTree = useNotesStore((s) => s.loadTree);
   const selectNote = useNotesStore((s) => s.selectNote);
   const createNote = useNotesStore((s) => s.createNote);
-  const activeRelPath = useNotesStore((s) => s.activeRelPath);
+  const activeNoteId = useNotesStore((s) => s.activeNoteId);
   const activeProjectId = useNotesStore((s) => s.activeProjectId);
 
   const { query: sidebarQuery, setAction } = useSidebarSearch("notes");
@@ -136,15 +185,15 @@ export function NotesNav({ onCreateNote }: NotesNavProps = {}) {
   const expandedIdsSet = useMemo(() => new Set(expandedIds), [expandedIds]);
 
   const handleCreateNote = useCallback(
-    (projectId: string, parentPath: string) => {
+    (projectId: string, folderId: string | null) => {
       if (onCreateNote) {
-        onCreateNote(projectId, parentPath);
+        onCreateNote(projectId, folderId);
         return;
       }
-      void createNote(projectId, parentPath).then((result) => {
+      void createNote(projectId, folderId).then((result) => {
         if (result) {
           void import("../../../lib/analytics").then(({ track }) => track("note_created"));
-          navigate(`/notes/${projectId}/${encodeURIComponent(result.relPath)}`);
+          navigate(`/notes/${projectId}/${encodeURIComponent(result.noteId)}`);
         }
       });
     },
@@ -156,11 +205,13 @@ export function NotesNav({ onCreateNote }: NotesNavProps = {}) {
       const projectId = project.project_id;
       const tree: NotesProjectTree | undefined = trees[projectId];
       const children = tree
-        ? buildTreeNodes(
+        ? buildFolderChildren(
             projectId,
-            tree.nodes,
+            null,
+            tree.folders,
+            tree.notes,
             tree.titleOverrides,
-            (parentPath) => handleCreateNote(projectId, parentPath),
+            (folderId) => handleCreateNote(projectId, folderId),
           )
         : [];
       return {
@@ -168,7 +219,7 @@ export function NotesNav({ onCreateNote }: NotesNavProps = {}) {
         label: project.name,
         children,
         suffix: hoverPlusSuffix(
-          () => handleCreateNote(projectId, ""),
+          () => handleCreateNote(projectId, null),
           `New note in ${project.name}`,
         ),
         metadata: {
@@ -191,9 +242,9 @@ export function NotesNav({ onCreateNote }: NotesNavProps = {}) {
   }, [openNewProjectModal, setAction]);
 
   const selectedLeafId = useMemo<string | null>(() => {
-    if (!activeProjectId || !activeRelPath) return null;
-    return noteIdFor(activeProjectId, activeRelPath);
-  }, [activeProjectId, activeRelPath]);
+    if (!activeProjectId || !activeNoteId) return null;
+    return noteIdFor(activeProjectId, activeNoteId);
+  }, [activeProjectId, activeNoteId]);
 
   const entries = useMemo(
     () =>
@@ -210,9 +261,9 @@ export function NotesNav({ onCreateNote }: NotesNavProps = {}) {
         onItemSelect: (id) => {
           const parsed = parseNotesExplorerId(id);
           if (parsed?.kind === "note") {
-            selectNote(parsed.projectId, parsed.relPath);
+            selectNote(parsed.projectId, parsed.id);
             navigate(
-              `/notes/${parsed.projectId}/${encodeURIComponent(parsed.relPath)}`,
+              `/notes/${parsed.projectId}/${encodeURIComponent(parsed.id)}`,
             );
           }
         },

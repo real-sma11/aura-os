@@ -21,12 +21,12 @@ import { NotesCommentsPanel } from "./NotesCommentsPanel";
 import { useNotesStore, makeNoteKey } from "../../../stores/notes-store";
 
 const projectId = "proj-1";
-const relPath = "ideas/brain.md";
+const noteId = "note-1";
 
 function activate() {
   useNotesStore.setState({
     activeProjectId: projectId,
-    activeRelPath: relPath,
+    activeNoteId: noteId,
   });
 }
 
@@ -34,7 +34,7 @@ describe("NotesCommentsPanel", () => {
   beforeEach(() => {
     useNotesStore.setState({
       activeProjectId: null,
-      activeRelPath: null,
+      activeNoteId: null,
       commentsByNote: {},
     });
   });
@@ -54,9 +54,10 @@ describe("NotesCommentsPanel", () => {
     activate();
     useNotesStore.setState({
       commentsByNote: {
-        [makeNoteKey(projectId, relPath)]: [
+        [makeNoteKey(projectId, noteId)]: [
           {
             id: "c-1",
+            noteId,
             authorName: "Ada",
             body: "Looking great",
             createdAt: new Date().toISOString(),
@@ -80,7 +81,7 @@ describe("NotesCommentsPanel", () => {
     fireEvent.change(textarea, { target: { value: "Shipping soon" } });
     fireEvent.keyDown(textarea, { key: "Enter" });
 
-    expect(addComment).toHaveBeenCalledWith(projectId, relPath, "Shipping soon");
+    expect(addComment).toHaveBeenCalledWith(projectId, noteId, "Shipping soon");
     expect(textarea.value).toBe("");
   });
 

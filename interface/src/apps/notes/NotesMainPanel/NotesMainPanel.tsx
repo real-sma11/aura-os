@@ -37,35 +37,6 @@ function getMarkdownStorage(editor: Editor): { getMarkdown: () => string } {
 
 type EditMode = "wysiwyg" | "markdown";
 
-function parseMdFrontmatter(content: string): { frontmatter: string; body: string } {
-  if (!content.startsWith("---")) {
-    return { frontmatter: "", body: content };
-  }
-  const lines = content.split(/\r?\n/);
-  if (lines[0]?.trim() !== "---") {
-    return { frontmatter: "", body: content };
-  }
-  let end = -1;
-  for (let i = 1; i < lines.length; i += 1) {
-    if (lines[i]?.trim() === "---") {
-      end = i;
-      break;
-    }
-  }
-  if (end === -1) {
-    return { frontmatter: "", body: content };
-  }
-  const frontmatter = lines.slice(0, end + 1).join("\n");
-  const body = lines.slice(end + 1).join("\n").replace(/^\n+/, "");
-  return { frontmatter, body };
-}
-
-function rejoinFrontmatter(frontmatter: string, body: string): string {
-  if (!frontmatter) return body;
-  const trimmedBody = body.replace(/^\n+/, "");
-  return `${frontmatter}\n\n${trimmedBody}`;
-}
-
 /**
  * Supplemental keymap for the note editor.
  *
@@ -122,7 +93,7 @@ const NotesKeymap = Extension.create({
 
 export function NotesMainPanel({ children }: { children?: ReactNode }) {
   const navigate = useNavigate();
-  const params = useParams<{ projectId: string; notePath: string }>();
+  const params = useParams<{ projectId: string; noteId: string }>();
   const note = useActiveNote();
   const activeKey = useActiveNoteKey();
   const selectNote = useNotesStore((s) => s.selectNote);
@@ -164,25 +135,20 @@ export function NotesMainPanel({ children }: { children?: ReactNode }) {
   });
 
   // Single source of truth for URL <-> store reconciliation. The URL is the
-  // authority for "which note is shown": when it changes (user navigated,
-  // clicked in the nav, etc.) we pull the store onto it. The store is only
-  // allowed to drive the URL when the URL is stable and activeKey has drifted
-  // (i.e. an autosave rename changed the relPath under us). Splitting these
-  // into two effects lets them oscillate — zustand and react-router have
-  // independent subscriptions, so a single click can produce a render where
-  // URL and activeKey disagree; each effect then "corrects" the other's side,
-  // producing an infinite swap and an HTTP storm of reads.
+  // authority for "which note is shown": when it changes we pull the store
+  // onto it. The store only drives the URL when the URL is stable and
+  // activeKey has drifted (a defensive guard kept from the filesystem era).
   const lastUrlSelectedRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!params.projectId || !params.notePath) return;
-    const decoded = decodeURIComponent(params.notePath);
+    if (!params.projectId || !params.noteId) return;
+    const decoded = decodeURIComponent(params.noteId);
     const urlKey = `${params.projectId}::${decoded}`;
 
     if (lastUrlSelectedRef.current !== urlKey) {
       lastUrlSelectedRef.current = urlKey;
       if (
         activeKey?.projectId !== params.projectId ||
-        activeKey?.relPath !== decoded
+        activeKey?.noteId !== decoded
       ) {
         selectNote(params.projectId, decoded);
       }
@@ -192,37 +158,29 @@ export function NotesMainPanel({ children }: { children?: ReactNode }) {
     if (
       activeKey &&
       activeKey.projectId === params.projectId &&
-      activeKey.relPath !== decoded
+      activeKey.noteId !== decoded
     ) {
       navigate(
-        `/notes/${activeKey.projectId}/${encodeURIComponent(activeKey.relPath)}`,
+        `/notes/${activeKey.projectId}/${encodeURIComponent(activeKey.noteId)}`,
         { replace: true },
       );
     }
-  }, [params.projectId, params.notePath, activeKey, selectNote, navigate]);
+  }, [params.projectId, params.noteId, activeKey, selectNote, navigate]);
 
-  // When the URL lacks `:notePath`, auto-selection is handled by
+  // When the URL lacks `:noteId`, auto-selection is handled by
   // `NotesIndexRedirect` — which only mounts on `/notes` and
   // `/notes/:projectId` routes. Keeping that logic out of the editor panel
   // prevents it from firing during an outgoing app switch (e.g. Notes →
   // Feedback) and hijacking the new route.
 
-  const { frontmatter, body } = useMemo(() => {
-    if (!note) return { frontmatter: "", body: "" };
-    return parseMdFrontmatter(note.content);
-  }, [note]);
+  const body = useMemo(() => note?.content ?? "", [note]);
 
-  // Ref-latched snapshots so the (stable) editor's onUpdate closure always
-  // dispatches against the current active note, even after an autosave
-  // rename has changed the relPath under us.
+  // Ref-latched snapshot so the (stable) editor's onUpdate closure always
+  // dispatches against the current active note.
   const activeKeyRef = useRef(activeKey);
-  const frontmatterRef = useRef(frontmatter);
   useEffect(() => {
     activeKeyRef.current = activeKey;
   }, [activeKey]);
-  useEffect(() => {
-    frontmatterRef.current = frontmatter;
-  }, [frontmatter]);
 
   const editor = useEditor(
     {
@@ -250,8 +208,7 @@ export function NotesMainPanel({ children }: { children?: ReactNode }) {
         const current = activeKeyRef.current;
         if (!current) return;
         const md = getMarkdownStorage(ed).getMarkdown();
-        const joined = rejoinFrontmatter(frontmatterRef.current, md);
-        updateContent(current.projectId, current.relPath, joined);
+        updateContent(current.projectId, current.noteId, md);
       },
       editorProps: {
         attributes: {
@@ -260,22 +217,20 @@ export function NotesMainPanel({ children }: { children?: ReactNode }) {
         },
       },
     },
-    // Re-init on project change only. Note renames (caused by autosave
-    // syncing filename to the first-line title) just swap relPath without
-    // changing content, so we keep the same editor instance to preserve the
-    // caret/selection.
+    // Re-init on project change only; switching notes within a project just
+    // swaps content via the sync effect below so we keep the same editor
+    // instance and preserve caret/selection behaviour.
     [activeKey?.projectId],
   );
 
   useEffect(() => {
     if (!editor || !note || !activeKey) return;
-    const key = `${activeKey.projectId}::${activeKey.relPath}`;
+    const key = `${activeKey.projectId}::${activeKey.noteId}`;
     if (lastSyncedKey.current === key) return;
     lastSyncedKey.current = key;
     const currentMd = getMarkdownStorage(editor).getMarkdown();
-    // Skip setContent when the body is already in sync (e.g. we're only
-    // reacting to an autosave rename, not a genuine note switch). setContent
-    // clears the selection, which would otherwise be jarring mid-typing.
+    // Skip setContent when the body is already in sync (avoids clearing the
+    // selection mid-typing).
     if (currentMd.trim() === body.trim()) return;
     editor.commands.setContent(body, { emitUpdate: false });
   }, [editor, note, activeKey, body]);
@@ -293,13 +248,12 @@ export function NotesMainPanel({ children }: { children?: ReactNode }) {
   const handleMarkdownEdit = useCallback(
     (text: string) => {
       if (!activeKey) return;
-      const joined = rejoinFrontmatter(frontmatter, text);
-      updateContent(activeKey.projectId, activeKey.relPath, joined);
+      updateContent(activeKey.projectId, activeKey.noteId, text);
       if (editor && mode === "markdown") {
         lastSyncedKey.current = null;
       }
     },
-    [activeKey, frontmatter, updateContent, editor, mode],
+    [activeKey, updateContent, editor, mode],
   );
 
   const handleModeChange = useCallback(
@@ -308,7 +262,7 @@ export function NotesMainPanel({ children }: { children?: ReactNode }) {
       if (next === "wysiwyg" && editor) {
         editor.commands.setContent(body, { emitUpdate: false });
         lastSyncedKey.current = activeKey
-          ? `${activeKey.projectId}::${activeKey.relPath}`
+          ? `${activeKey.projectId}::${activeKey.noteId}`
           : null;
       }
     },
@@ -333,7 +287,7 @@ export function NotesMainPanel({ children }: { children?: ReactNode }) {
     return "";
   }, [note]);
 
-  if (!params.projectId || !params.notePath) {
+  if (!params.projectId || !params.noteId) {
     // `NotesIndexRedirect` is the route element for `/notes` and
     // `/notes/:projectId`; it mounts inside this lane (via `children`) and
     // issues a `Navigate` to a concrete note path.
@@ -345,7 +299,7 @@ export function NotesMainPanel({ children }: { children?: ReactNode }) {
       className={styles.container}
       data-agent-surface="notes-editor"
       data-agent-note-title={note?.title || ""}
-      data-agent-note-path={activeKey?.relPath || ""}
+      data-agent-note-id={activeKey?.noteId || ""}
       data-agent-note-mode={mode}
     >
       <div className={styles.toolbar}>

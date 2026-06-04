@@ -50,7 +50,6 @@ function makeApi(
     deleteError: null,
     setDeleteError: vi.fn(),
     handleDelete: vi.fn().mockResolvedValue(undefined),
-    parentRelPathFor: () => "",
     ...overrides,
   };
 }
@@ -70,8 +69,8 @@ describe("NotesEntryContextMenu", () => {
         target: {
           kind: "note",
           projectId: "p1",
-          relPath: "a.md",
-          name: "a.md",
+          id: "note-1",
+          name: "a",
         },
       },
     });
@@ -80,13 +79,13 @@ describe("NotesEntryContextMenu", () => {
       screen.getByRole("button", { name: "Rename" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Reveal in folder" }),
-    ).toBeInTheDocument();
-    expect(
       screen.getByRole("button", { name: "Delete" }),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "New note" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Reveal in folder" }),
     ).not.toBeInTheDocument();
   });
 
@@ -98,7 +97,7 @@ describe("NotesEntryContextMenu", () => {
         target: {
           kind: "folder",
           projectId: "p1",
-          relPath: "ideas",
+          id: "folder-1",
           name: "ideas",
         },
       },
@@ -123,8 +122,8 @@ describe("NotesEntryContextMenu", () => {
         target: {
           kind: "note",
           projectId: "p1",
-          relPath: "a.md",
-          name: "a.md",
+          id: "note-1",
+          name: "a",
         },
       },
     });
