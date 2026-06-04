@@ -1,3 +1,4 @@
+import { memo, type ComponentType } from "react";
 import type { DesktopLeftMenuPaneDefinition } from "../types";
 import styles from "./LeftMenu.module.css";
 
@@ -14,6 +15,20 @@ function shouldRenderPane(
 ): boolean {
   return appId === activeAppId || visitedAppIds.has(appId);
 }
+
+// Memoized so a change in `activeAppId` (the Agents <-> Projects flip) only
+// updates the wrapping `<div>`'s visibility class — it never re-runs the pane
+// body. `panes` is a module-level constant in the caller, so each `Pane`
+// reference is referentially stable and this memo stays inert across the
+// parent's switch-driven re-renders. Pane bodies still update via their own
+// store/router subscriptions when their data actually changes.
+const KeepAlivePane = memo(function KeepAlivePane({
+  Pane,
+}: {
+  Pane: ComponentType;
+}) {
+  return <Pane />;
+});
 
 export function LeftMenu({
   activeAppId,
@@ -41,7 +56,7 @@ export function LeftMenu({
             data-active={appId === activeAppId || undefined}
             data-testid={`desktop-left-menu-pane-${appId}`}
           >
-            <Pane />
+            <KeepAlivePane Pane={Pane} />
           </div>
         );
       })}
