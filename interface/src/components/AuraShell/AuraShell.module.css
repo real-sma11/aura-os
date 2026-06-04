@@ -235,6 +235,8 @@
   min-height: 0;
   display: flex;
   overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* Hosts the `PanelSearch` row inside the Lane's header slot. */
