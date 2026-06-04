@@ -18,6 +18,10 @@ pub(super) fn notes_routes() -> Router<AppState> {
             post(notes::create_note),
         )
         .route(
+            "/api/notes/projects/:project_id/import",
+            post(notes::import_project_notes),
+        )
+        .route(
             "/api/notes/projects/:project_id/notes/:note_id",
             get(notes::get_note)
                 .put(notes::update_note)

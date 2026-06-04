@@ -21,6 +21,9 @@ use axum::http::StatusCode;
 use axum::Json;
 use serde::{Deserialize, Serialize};
 
+mod import;
+pub(crate) use import::import_project_notes;
+
 type ApiErrorResponse = (StatusCode, Json<ApiError>);
 
 use aura_os_core::ZeroAuthSession;
