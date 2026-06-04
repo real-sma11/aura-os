@@ -104,9 +104,9 @@
   font-family: inherit;
   cursor: pointer;
   transition:
-    background 240ms ease,
-    box-shadow 240ms ease,
-    transform 240ms ease;
+    background 90ms ease-out,
+    box-shadow 90ms ease-out,
+    transform 90ms ease-out;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -212,7 +212,7 @@
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--sw-text);
-  transition: color 240ms ease;
+  transition: color 90ms ease-out;
 }
 
 .halfActive .label {
