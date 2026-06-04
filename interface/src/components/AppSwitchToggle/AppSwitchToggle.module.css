@@ -110,13 +110,14 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Outer corners pill-rounded, inner seam corners near-square. */
+/* Outer corners pill-rounded, inner seam corners square so the two halves
+   butt flush with no rounding into the seam. */
 .halfLeft {
-  border-radius: 12px 3px 3px 12px;
+  border-radius: 12px 0 0 12px;
 }
 
 .halfRight {
-  border-radius: 3px 12px 12px 3px;
+  border-radius: 0 12px 12px 0;
 }
 
 /* Active half: diagonal gradient fill + large outward-down black shadow.
