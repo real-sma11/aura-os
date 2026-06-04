@@ -105,26 +105,36 @@
      fill over a gradient border-box) so the gradient follows the rounded
      corners, which border-image would otherwise square off. */
   border: 1px solid transparent;
+  /* Black-glass stack (layers paint top-to-bottom): a soft diagonal glare
+     streak over a uniform smoked-black tint that stays translucent enough for
+     the blur to read everywhere, finished with the metallic edge gradient. */
   background:
     linear-gradient(
-        135deg,
-        rgba(0, 0, 0, 0.92) 0%,
-        rgba(0, 0, 0, 0.7) 45%,
-        rgba(14, 14, 16, 0.22) 100%
+        125deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.1) 16%,
+        rgba(255, 255, 255, 0) 40%
       )
       padding-box,
     linear-gradient(
         135deg,
-        rgba(255, 255, 255, 0.4) 0%,
-        rgba(255, 255, 255, 0.06) 50%,
-        rgba(0, 0, 0, 0.55) 100%
+        rgba(0, 0, 0, 0.72) 0%,
+        rgba(0, 0, 0, 0.52) 100%
+      )
+      padding-box,
+    linear-gradient(
+        135deg,
+        rgba(255, 255, 255, 0.45) 0%,
+        rgba(255, 255, 255, 0.08) 50%,
+        rgba(0, 0, 0, 0.5) 100%
       )
       border-box;
-  backdrop-filter: blur(18px) saturate(120%);
-  -webkit-backdrop-filter: blur(18px) saturate(120%);
+  backdrop-filter: blur(26px) saturate(135%);
+  -webkit-backdrop-filter: blur(26px) saturate(135%);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 8px 24px -10px rgba(0, 0, 0, 0.7);
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.02),
+    0 10px 30px -12px rgba(0, 0, 0, 0.85);
 }
 
 /* Faint diagonal glass reflection. */
