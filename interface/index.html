@@ -69,6 +69,25 @@
           if (glass.left) document.documentElement.setAttribute('data-glass-left', 'true');
           if (glass.middle) document.documentElement.setAttribute('data-glass-middle', 'true');
           if (glass.sidekick) document.documentElement.setAttribute('data-glass-sidekick', 'true');
+          // Stamp the tunable glass blur/opacity level (Settings > Theme >
+          // Effects sliders) before first paint so a customized level never
+          // flashes the default 40px / 90% recipe. Mirrors lib/glass-level.ts.
+          var blur = 40;
+          var opacity = 90;
+          var levelRaw = localStorage.getItem('aura-glass-level');
+          if (levelRaw) {
+            var levelParsed = JSON.parse(levelRaw);
+            if (levelParsed && typeof levelParsed === 'object') {
+              if (typeof levelParsed.blur === 'number') {
+                blur = Math.min(80, Math.max(0, Math.round(levelParsed.blur)));
+              }
+              if (typeof levelParsed.opacity === 'number') {
+                opacity = Math.min(100, Math.max(40, Math.round(levelParsed.opacity)));
+              }
+            }
+          }
+          document.documentElement.style.setProperty('--shell-chrome-blur', blur + 'px');
+          document.documentElement.style.setProperty('--shell-chrome-opacity', opacity + '%');
         } catch (_) {
           document.documentElement.setAttribute('data-theme', 'dark');
           document.documentElement.setAttribute('data-glass-left', 'true');

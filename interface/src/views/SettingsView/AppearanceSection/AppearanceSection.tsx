@@ -13,7 +13,14 @@ import { Sun, Moon, MonitorSmartphone } from "lucide-react";
 import { CustomTokensPanel } from "./CustomTokensPanel";
 import { PresetsPanel } from "./PresetsPanel";
 import { usePanelGlass } from "../../../hooks/use-panel-glass";
+import { useGlassLevel } from "../../../hooks/use-glass-level";
 import type { PanelKey } from "../../../lib/panel-glass";
+import {
+  GLASS_BLUR_MIN,
+  GLASS_BLUR_MAX,
+  GLASS_OPACITY_MIN,
+  GLASS_OPACITY_MAX,
+} from "../../../lib/glass-level";
 import styles from "./AppearanceSection.module.css";
 
 const GLASS_PANELS: { key: PanelKey; label: string }[] = [
@@ -55,6 +62,7 @@ const SWATCH_CLASSES: Record<AccentColor, string> = {
 export function AppearanceSection() {
   const { theme, accent, setTheme, setAccent } = useTheme();
   const { glass, setPanel } = usePanelGlass();
+  const { level, setBlur, setOpacity } = useGlassLevel();
 
   return (
     <Panel
@@ -129,6 +137,46 @@ export function AppearanceSection() {
         <Text variant="muted" size="xs">
           Frosts each panel so the wallpaper shows through behind it.
         </Text>
+
+        <div className={styles.slider}>
+          <label className={styles.sliderLabel} htmlFor="glass-blur">
+            <Text size="sm">Blur</Text>
+            <Text variant="muted" size="xs">
+              {level.blur}px
+            </Text>
+          </label>
+          <input
+            id="glass-blur"
+            type="range"
+            className={styles.sliderInput}
+            min={GLASS_BLUR_MIN}
+            max={GLASS_BLUR_MAX}
+            step={1}
+            value={level.blur}
+            aria-label="Glass blur"
+            onChange={(e) => setBlur(Number(e.target.value))}
+          />
+        </div>
+
+        <div className={styles.slider}>
+          <label className={styles.sliderLabel} htmlFor="glass-opacity">
+            <Text size="sm">Opacity</Text>
+            <Text variant="muted" size="xs">
+              {level.opacity}%
+            </Text>
+          </label>
+          <input
+            id="glass-opacity"
+            type="range"
+            className={styles.sliderInput}
+            min={GLASS_OPACITY_MIN}
+            max={GLASS_OPACITY_MAX}
+            step={1}
+            value={level.opacity}
+            aria-label="Glass opacity"
+            onChange={(e) => setOpacity(Number(e.target.value))}
+          />
+        </div>
       </div>
 
       <CustomTokensPanel />

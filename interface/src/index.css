@@ -72,8 +72,18 @@
   --shell-chrome-inset: 5px;
   --shell-chrome-outer-height: calc(var(--shell-chrome-height) + 10px);
   --shell-chrome-radius: 20px;
-  --shell-chrome-background: color-mix(in srgb, var(--color-titlebar-bg) 90%, transparent);
-  --shell-chrome-backdrop-filter: blur(40px) saturate(1.4);
+  /*
+   * Tunable glass knobs (Settings > Theme > Effects sliders). The blur radius
+   * and chrome opacity are split out as their own custom properties so the
+   * sliders can set them live on `document.documentElement` (inline styles win
+   * over these `:root` defaults by specificity, same as the theme-override
+   * tokens). The boot script in `index.html` pre-stamps them to avoid a
+   * first-paint flash. Defaults preserve the original 40px / 90% recipe.
+   */
+  --shell-chrome-blur: 40px;
+  --shell-chrome-opacity: 90%;
+  --shell-chrome-background: color-mix(in srgb, var(--color-titlebar-bg) var(--shell-chrome-opacity), transparent);
+  --shell-chrome-backdrop-filter: blur(var(--shell-chrome-blur)) saturate(1.4);
 
   /*
    * Backdrop painted across the entire authed shell (`AuraShell`
