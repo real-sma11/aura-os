@@ -126,7 +126,13 @@
   z-index: 1;
 }
 
+/* The first background layer is a short fade at the inner (seam) edge from
+   the idle half's color into transparent, so the boundary between the two
+   halves blends instead of reading as a hard line. */
 .halfLeft.halfActive {
+  background:
+    linear-gradient(to left, var(--sw-idle-bg), transparent 22px),
+    linear-gradient(135deg, var(--sw-active-from), var(--sw-active-to));
   box-shadow:
     inset 0 1px 0 var(--sw-active-ring-light),
     0 2px 4px rgba(0, 0, 0, 0.35),
@@ -134,6 +140,9 @@
 }
 
 .halfRight.halfActive {
+  background:
+    linear-gradient(to right, var(--sw-idle-bg), transparent 22px),
+    linear-gradient(135deg, var(--sw-active-from), var(--sw-active-to));
   box-shadow:
     inset 0 1px 0 var(--sw-active-ring-light),
     0 2px 4px rgba(0, 0, 0, 0.35),
