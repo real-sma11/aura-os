@@ -78,27 +78,11 @@
   box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.55);
 }
 
-/* Top-dark / bottom-light bevel ring — the recessed track border (sits
-   behind the thumb). */
-.panel::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  border-radius: inherit;
-  padding: 1px;
-  background: linear-gradient(180deg, var(--sw-ring-top), var(--sw-ring-bottom));
-  -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
-}
-
 /* Bright diagonal border — one continuous frame around the whole pill,
-   layered ABOVE the thumb so both sides share the same border with the light
-   end always on top. The bright corner follows the selected side. */
+   layered ABOVE the thumb so both sides share exactly the same border (no
+   bevel hiding behind the thumb to create an abrupt step). The light end is
+   always on top and its bright corner follows the selected side. Depth comes
+   from the panel's inset shadow instead of a separate bevel ring. */
 .panel::after {
   content: "";
   position: absolute;
