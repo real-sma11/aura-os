@@ -73,14 +73,13 @@ async fn resolve_agent(
 ) -> ApiResult<aura_os_core::Agent> {
     match state.agent_service.get_agent_with_jwt(jwt, agent_id).await {
         Ok(agent) => Ok(agent),
-        Err(aura_os_agents::AgentError::NotFound) => state
-            .agent_service
-            .get_agent_local(agent_id)
-            .map_err(|_| {
+        Err(aura_os_agents::AgentError::NotFound) => {
+            state.agent_service.get_agent_local(agent_id).map_err(|_| {
                 ApiError::not_found(format!(
                     "agent {agent_id} not found in network or local shadow"
                 ))
-            }),
+            })
+        }
         Err(error) => Err(ApiError::internal(format!(
             "resolving agent {agent_id}: {error}"
         ))),

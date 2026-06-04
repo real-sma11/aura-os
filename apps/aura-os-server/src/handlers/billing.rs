@@ -332,8 +332,7 @@ mod tests {
         let router_url = "http://localhost:19080".to_string();
         let agent_event_listener = Arc::new(crate::agent_events::AgentEventListener::new(100));
         agent_event_listener.spawn(event_broadcast.subscribe());
-        let channel_service =
-            Arc::new(aura_os_channels::ChannelService::new(store.clone()));
+        let channel_service = Arc::new(aura_os_channels::ChannelService::new(store.clone()));
 
         (
             AppState {

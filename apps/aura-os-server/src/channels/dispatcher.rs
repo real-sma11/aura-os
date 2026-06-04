@@ -156,9 +156,7 @@ impl MessageDispatcher for ServerMessageDispatcher {
         let status = response.status();
         // The token validated above but was rejected by the chat endpoint:
         // treat it as a stale credential so the user re-links.
-        if status == reqwest::StatusCode::UNAUTHORIZED
-            || status == reqwest::StatusCode::FORBIDDEN
-        {
+        if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
             return Ok(DispatchOutcome::NeedsRelink);
         }
         if !status.is_success() {

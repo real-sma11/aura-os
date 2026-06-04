@@ -71,9 +71,9 @@ async fn connect_swarm_ws(
         if let Some(t) = token {
             ws_request.headers_mut().insert(
                 "Authorization",
-                format!("Bearer {t}")
-                    .parse()
-                    .map_err(|e| anyhow::anyhow!("swarm websocket auth header build failed: {e}"))?,
+                format!("Bearer {t}").parse().map_err(|e| {
+                    anyhow::anyhow!("swarm websocket auth header build failed: {e}")
+                })?,
             );
         }
         match tokio::time::timeout(

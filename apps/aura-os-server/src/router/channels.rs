@@ -13,7 +13,10 @@ pub(super) fn channel_routes() -> Router<AppState> {
             "/api/agents/:agent_id/channels/telegram/link",
             post(channels::link_telegram),
         )
-        .route("/api/agents/:agent_id/channels", get(channels::list_channels))
+        .route(
+            "/api/agents/:agent_id/channels",
+            get(channels::list_channels),
+        )
         .route(
             "/api/agents/:agent_id/channels/:channel_id",
             delete(channels::disconnect_channel),

@@ -240,8 +240,14 @@ fn spawn_bridge_supervisor<S>(
     tokio::spawn(async move {
         let mut ws = initial;
         loop {
-            let outcome =
-                run_connection(ws, &reader_tx, &reader_raw_tx, &mut inbound_rx, ping_interval).await;
+            let outcome = run_connection(
+                ws,
+                &reader_tx,
+                &reader_raw_tx,
+                &mut inbound_rx,
+                ping_interval,
+            )
+            .await;
             match outcome {
                 ConnOutcome::ShutdownRequested => return,
                 ConnOutcome::Disconnected(reason) => {
@@ -258,7 +264,9 @@ fn spawn_bridge_supervisor<S>(
                     match reconnect.as_ref() {
                         Some(reconnect_fn) => {
                             let _ = reader_tx.send(reconnecting_progress(&reason));
-                            info!("harness ws dropped mid-session; attempting transparent reconnect");
+                            info!(
+                                "harness ws dropped mid-session; attempting transparent reconnect"
+                            );
                             match reconnect_fn().await {
                                 Ok(fresh) => {
                                     stability_metrics::inc_ws_reconnect();
@@ -708,16 +716,25 @@ mod tests {
 
     impl Sink<WsMessage> for MockWs {
         type Error = WsErr;
-        fn poll_ready(self: Pin<&mut Self>, _cx: &mut TaskContext<'_>) -> Poll<Result<(), Self::Error>> {
+        fn poll_ready(
+            self: Pin<&mut Self>,
+            _cx: &mut TaskContext<'_>,
+        ) -> Poll<Result<(), Self::Error>> {
             Poll::Ready(Ok(()))
         }
         fn start_send(self: Pin<&mut Self>, _item: WsMessage) -> Result<(), Self::Error> {
             Ok(())
         }
-        fn poll_flush(self: Pin<&mut Self>, _cx: &mut TaskContext<'_>) -> Poll<Result<(), Self::Error>> {
+        fn poll_flush(
+            self: Pin<&mut Self>,
+            _cx: &mut TaskContext<'_>,
+        ) -> Poll<Result<(), Self::Error>> {
             Poll::Ready(Ok(()))
         }
-        fn poll_close(self: Pin<&mut Self>, _cx: &mut TaskContext<'_>) -> Poll<Result<(), Self::Error>> {
+        fn poll_close(
+            self: Pin<&mut Self>,
+            _cx: &mut TaskContext<'_>,
+        ) -> Poll<Result<(), Self::Error>> {
             Poll::Ready(Ok(()))
         }
     }

@@ -112,7 +112,10 @@ fn wallet_address_survives_both_serde_boundaries_and_the_conversion() {
 
     // NetworkAgent's wire key is camelCase (matches aura-network) and round-trips.
     let net_json = serde_json::to_value(&net).expect("serialize NetworkAgent");
-    assert_eq!(net_json["walletAddress"], ADDR, "NetworkAgent uses camelCase on the wire");
+    assert_eq!(
+        net_json["walletAddress"], ADDR,
+        "NetworkAgent uses camelCase on the wire"
+    );
     let net: NetworkAgent = serde_json::from_value(net_json).expect("round-trip NetworkAgent");
 
     // The conversion carries it onto the core Agent...
@@ -121,7 +124,10 @@ fn wallet_address_survives_both_serde_boundaries_and_the_conversion() {
 
     // ...which serializes the snake_case key the frontend reads.
     let agent_json = serde_json::to_value(&agent).expect("serialize core Agent");
-    assert_eq!(agent_json["wallet_address"], ADDR, "core Agent uses snake_case for the frontend");
+    assert_eq!(
+        agent_json["wallet_address"], ADDR,
+        "core Agent uses snake_case for the frontend"
+    );
 
     // Absent (and not a stray key) on records without a provisioned wallet.
     let bare = agent_from_network(&blank_network_agent("Bare", None));
