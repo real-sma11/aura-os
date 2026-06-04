@@ -197,6 +197,34 @@
   font-size: 13px;
 }
 
+/* Right-aligned cluster holding the value (or link) and its copy button so the
+   value can ellipsize while the copy glyph stays pinned to the right edge. */
+.specValueGroup {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* Wallet value rendered as an external link: underlines on hover, otherwise
+   reads identically to the engraved value text. */
+.specValueLink {
+  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
+}
+
+.specValueLink:hover {
+  text-decoration: underline;
+}
+
+/* Compact icon-only copy button tuned for the glass spec card. */
+.specCopy {
+  flex: none;
+  padding: 2px;
+}
+
 /* Recessed pill holding the engraved channel logos. */
 .specChannels {
   display: flex;

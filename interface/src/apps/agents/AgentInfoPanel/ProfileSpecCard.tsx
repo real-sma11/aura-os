@@ -4,6 +4,7 @@ import { useOrgStore } from "../../../stores/org-store";
 import { useRemoteAgentState } from "../../../hooks/use-remote-agent-state";
 import { useEnvironmentInfo } from "../../../hooks/use-environment-info";
 import { useAgentSidekickStore } from "../stores/agent-sidekick-store";
+import { CopyButton } from "../../../components/CopyButton/CopyButton";
 import { BRAND_ICONS } from "./profile-card-texture";
 import type { ProfileSectionLink } from "./ProfileCard3D";
 import styles from "./AgentInfoPanel.module.css";
@@ -18,6 +19,10 @@ interface SpecRow {
   value: string;
   mono?: boolean;
   title?: string;
+  /** Full text to place on the clipboard; presence renders a copy button. */
+  copyValue?: string;
+  /** When set, the value renders as a link that opens in a new browser tab. */
+  href?: string;
 }
 
 export interface ProfileSpecCardProps {
@@ -50,7 +55,7 @@ export function ProfileSpecCard({ agent, sections }: ProfileSpecCardProps) {
   const rows = useMemo<SpecRow[]>(() => {
     const list: SpecRow[] = [
       { label: "Organization", value: orgName ?? "—" },
-      { label: "IP", value: ip ?? "—", mono: true },
+      { label: "IP", value: ip ?? "—", mono: true, copyValue: ip ?? undefined },
     ];
     if (agent.wallet_address) {
       list.push({
@@ -58,6 +63,8 @@ export function ProfileSpecCard({ agent, sections }: ProfileSpecCardProps) {
         value: truncateAddress(agent.wallet_address),
         mono: true,
         title: agent.wallet_address,
+        copyValue: agent.wallet_address,
+        href: `https://zscan.live/address/${agent.wallet_address}`,
       });
     }
     return list;
@@ -70,11 +77,33 @@ export function ProfileSpecCard({ agent, sections }: ProfileSpecCardProps) {
         {rows.map((row) => (
           <div key={row.label} className={styles.specRow}>
             <span className={styles.specLabel}>{row.label}</span>
-            <span
-              className={`${styles.specValue} ${row.mono ? styles.specValueMono : ""}`}
-              title={row.title}
-            >
-              {row.value}
+            <span className={styles.specValueGroup}>
+              {row.href ? (
+                <a
+                  className={`${styles.specValue} ${styles.specValueLink} ${row.mono ? styles.specValueMono : ""}`}
+                  href={row.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={row.title}
+                >
+                  {row.value}
+                </a>
+              ) : (
+                <span
+                  className={`${styles.specValue} ${row.mono ? styles.specValueMono : ""}`}
+                  title={row.title}
+                >
+                  {row.value}
+                </span>
+              )}
+              {row.copyValue ? (
+                <CopyButton
+                  getText={() => row.copyValue ?? ""}
+                  iconOnly
+                  ariaLabel={`Copy ${row.label}`}
+                  className={styles.specCopy}
+                />
+              ) : null}
             </span>
           </div>
         ))}
