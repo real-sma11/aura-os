@@ -865,12 +865,11 @@
      pill rather than a fully-closed box with a square bottom line. */
   border-bottom: none;
   border-radius: 14px 14px 0 0;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--color-bg) 60%, transparent),
-      color-mix(in srgb, var(--color-bg) 85%, transparent)
-    );
+  /* Opaque fill so the transcript scrolling above the input never bleeds
+     through the tab. The previous `color-mix(... transparent)` gradient
+     composited to `--color-bg` over the panel anyway, so a solid
+     `--color-bg` keeps the exact same look while fully occluding content. */
+  background: var(--color-bg);
 }
 
 /* Top-left collapse chevron mirrors the top-right new-chat "+" so the
