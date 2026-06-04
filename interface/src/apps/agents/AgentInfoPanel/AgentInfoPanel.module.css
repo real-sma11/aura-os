@@ -110,23 +110,16 @@
      the blur to read everywhere, finished with the metallic edge gradient. */
   background:
     linear-gradient(
-        125deg,
-        transparent 0%,
-        rgba(255, 255, 255, 0.035) 18%,
-        rgba(255, 255, 255, 0) 42%
+        135deg,
+        rgba(0, 0, 0, 0.82) 0%,
+        rgba(0, 0, 0, 0.58) 100%
       )
       padding-box,
     linear-gradient(
         135deg,
-        rgba(0, 0, 0, 0.8) 0%,
-        rgba(0, 0, 0, 0.6) 100%
-      )
-      padding-box,
-    linear-gradient(
-        135deg,
-        rgba(255, 255, 255, 0.45) 0%,
-        rgba(255, 255, 255, 0.08) 50%,
-        rgba(0, 0, 0, 0.5) 100%
+        rgba(255, 255, 255, 0.12) 0%,
+        rgba(255, 255, 255, 0.05) 50%,
+        rgba(255, 255, 255, 0.02) 100%
       )
       border-box;
   backdrop-filter: blur(26px) saturate(135%);
