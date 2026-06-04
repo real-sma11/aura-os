@@ -118,7 +118,7 @@
   background: linear-gradient(
     135deg,
     var(--sw-active-ring-light) 0%,
-    var(--sw-active-ring-dark) 65%
+    var(--sw-active-ring-dark) 100%
   );
 }
 
@@ -126,7 +126,7 @@
   background: linear-gradient(
     225deg,
     var(--sw-active-ring-light) 0%,
-    var(--sw-active-ring-dark) 65%
+    var(--sw-active-ring-dark) 100%
   );
 }
 
