@@ -131,14 +131,16 @@
   box-shadow: 10px 12px 22px -4px var(--sw-active-shadow);
 }
 
-/* Directional gradient border on the active half: lighter toward the
-   outer/top edge, darker toward the inner/bottom. */
-.halfActive::before {
+/* Beveled seam ring around every half, always shown. Idle halves get the
+   recessed dark-top / light-bottom bevel; the active half overrides the
+   gradient below to a directional light->dark border. */
+.half::before {
   content: "";
   position: absolute;
   inset: 0;
   border-radius: inherit;
   padding: 1px;
+  background: linear-gradient(180deg, var(--sw-ring-top), var(--sw-ring-bottom));
   -webkit-mask:
     linear-gradient(#000 0 0) content-box,
     linear-gradient(#000 0 0);
