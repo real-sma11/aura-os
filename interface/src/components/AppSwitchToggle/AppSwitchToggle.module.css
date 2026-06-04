@@ -1,18 +1,21 @@
 /*
- * Neumorphic Agents/Projects rocker switch.
+ * Neumorphic Agents/Projects rocker switch — center-folding model.
  *
- * The raised plate (`.rocker`) does NOT slide. It tilts toward the
- * active side like a physical rocker: Agents presses the left edge
- * down, Projects presses the right edge down. The motion is a blend of
- * `rotateY` (the tilt), `translateY` (a small settle) and a directional
- * box-shadow shift, with an inset shadow + slight darkening on the
- * pressed half.
+ * Structure:
+ *   .scene   owns the shared 3D perspective + vanishing point. Keeping
+ *            perspective here (not in each plate's own transform) is what
+ *            makes the fold read coherently — both halves share one
+ *            stable vanishing point instead of each warping around its
+ *            own box center.
+ *   .cradle  the static recessed housing the rocker sits in.
+ *   .rocker  preserve-3d flex container holding the two halves.
+ *   .half    a hinged panel. The SELECTED half lies flat in the cradle
+ *            plane; the UNSELECTED half folds back from the center seam
+ *            like a ramp and foreshortens under the scene perspective.
  *
- * Neumorphism leans on a matched pair of soft shadows — a light
- * highlight and a dark shadow — painted against a surface that shares
- * the surrounding background. Those values have to flip with the theme
- * or the effect inverts (a dark shadow on a dark surface reads as a
- * black blob), so the `--nm-*` tokens are rebound per `[data-theme]`.
+ * Neumorphism needs its light/dark shadow pair to flip with the theme or
+ * the effect inverts, so the `--nm-*` tokens are rebound per
+ * `[data-theme]` below.
  */
 
 .wrap {
@@ -20,90 +23,60 @@
   padding: 12px 12px 10px;
 }
 
-.base {
-  /* Light-mode defaults — a soft off-white pressed-plastic plate,
-     matching the reference. */
+.scene {
+  /* Light-mode defaults — soft pressed-plastic plate, matching the ref. */
   --nm-base-bg: #e6e6e6;
-  --nm-rocker-bg: #f5f5f5;
-  --nm-rocker-bg-active: #ededed;
+  --nm-plate: #f4f4f5;
+  --nm-plate-fold: #dfe0e3;
   --nm-highlight: rgba(255, 255, 255, 0.9);
-  --nm-shadow: rgba(0, 0, 0, 0.16);
-  --nm-shadow-soft: rgba(0, 0, 0, 0.05);
-  --nm-press-inset: rgba(0, 0, 0, 0.13);
-  --nm-text: #777b85;
+  --nm-shadow: rgba(0, 0, 0, 0.18);
+  --nm-shadow-soft: rgba(0, 0, 0, 0.06);
+  --nm-text: #8a8d96;
   --nm-text-active: #2b2e36;
+  --nm-fold: 40deg;
 
-  position: relative;
-  display: grid;
-  place-items: center;
+  perspective: 720px;
+  /* Slightly above center so the folded ramp is seen from above, going
+     back into the housing rather than edge-on. */
+  perspective-origin: 50% 32%;
+}
+
+:global([data-theme="dark"]) .scene {
+  --nm-base-bg: #161718;
+  --nm-plate: #2b2d34;
+  --nm-plate-fold: #202229;
+  --nm-highlight: rgba(255, 255, 255, 0.07);
+  --nm-shadow: rgba(0, 0, 0, 0.6);
+  --nm-shadow-soft: rgba(0, 0, 0, 0.42);
+  --nm-text: rgba(255, 255, 255, 0.42);
+  --nm-text-active: rgba(255, 255, 255, 0.92);
+}
+
+.cradle {
+  display: flex;
+  align-items: center;
   width: 100%;
   height: 56px;
-  /* Symmetric inset so the rocker reads as a centered plate with equal
-     breathing room on the left and right (and a touch less top/bottom),
-     matching the reference frame. */
-  padding: 8px 18px;
+  /* Symmetric inset -> the rocker reads as centered with equal left/right
+     breathing room. */
+  padding: 8px 16px;
   box-sizing: border-box;
   border-radius: 16px;
   background: var(--nm-base-bg);
   box-shadow:
     inset 0 2px 3px var(--nm-highlight),
-    inset 0 -8px 20px var(--nm-shadow-soft);
+    inset 0 -7px 18px var(--nm-shadow-soft);
 }
 
-:global([data-theme="dark"]) .base {
-  --nm-base-bg: #17181c;
-  --nm-rocker-bg: #25272e;
-  --nm-rocker-bg-active: #1f2128;
-  --nm-highlight: rgba(255, 255, 255, 0.06);
-  --nm-shadow: rgba(0, 0, 0, 0.55);
-  --nm-shadow-soft: rgba(0, 0, 0, 0.4);
-  --nm-press-inset: rgba(0, 0, 0, 0.55);
-  --nm-text: rgba(255, 255, 255, 0.45);
-  --nm-text-active: rgba(255, 255, 255, 0.92);
-}
-
-/* The raised plate. Tilts via the modifier classes below — it never
-   translates horizontally. */
 .rocker {
   position: relative;
   display: flex;
   width: 100%;
   height: 100%;
-  border-radius: 12px;
-  background: var(--nm-rocker-bg);
-  overflow: hidden;
   transform-style: preserve-3d;
-  transform: perspective(440px);
-  transition:
-    transform 240ms cubic-bezier(0.34, 1.18, 0.5, 1),
-    box-shadow 240ms ease;
-  box-shadow:
-    0 10px 18px var(--nm-shadow),
-    inset 0 1px 1px var(--nm-highlight);
 }
 
-/* Agents active -> the LEFT (selected) half stays flat and frontal while
-   the right half skews away. Pivoting at the left edge keeps the
-   selected side seated; the unselected side recedes and foreshortens. */
-.rockerAgents {
-  transform-origin: left center;
-  transform: perspective(440px) rotateY(34deg);
-  box-shadow:
-    16px 16px 26px var(--nm-shadow),
-    inset 0 1px 1px var(--nm-highlight);
-}
-
-/* Projects active -> the RIGHT (selected) half stays flat and frontal
-   while the left half skews away. */
-.rockerProjects {
-  transform-origin: right center;
-  transform: perspective(440px) rotateY(-34deg);
-  box-shadow:
-    -16px 16px 26px var(--nm-shadow),
-    inset 0 1px 1px var(--nm-highlight);
-}
-
-.option {
+.half {
   flex: 1;
   display: inline-flex;
   align-items: center;
@@ -111,28 +84,67 @@
   margin: 0;
   padding: 0;
   border: 0;
-  background: transparent;
+  background: var(--nm-plate);
   font-family: inherit;
+  cursor: pointer;
+  backface-visibility: hidden;
+  transition:
+    transform 280ms cubic-bezier(0.34, 1.04, 0.42, 1),
+    background-color 280ms ease,
+    box-shadow 280ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Each half hinges at the CENTER seam (its inner edge). */
+.halfLeft {
+  transform-origin: right center;
+  border-radius: 11px 2px 2px 11px;
+}
+
+.halfRight {
+  transform-origin: left center;
+  border-radius: 2px 11px 11px 2px;
+}
+
+/* Selected half: flat in the cradle plane, lifted slightly toward the
+   viewer so it clearly reads as the raised/active face. */
+.halfActive {
+  transform: translateZ(4px);
+  background: var(--nm-plate);
+  box-shadow:
+    0 11px 16px var(--nm-shadow),
+    inset 0 1px 1px var(--nm-highlight);
+}
+
+/* Unselected half: folds back from the seam. Left half swings its outer
+   (left) edge away (+rotateY sends -X toward -Z); right half mirrors. */
+.halfFolded {
+  background: var(--nm-plate-fold);
+  box-shadow: 0 5px 9px var(--nm-shadow-soft);
+}
+
+.halfLeft.halfFolded {
+  transform: rotateY(var(--nm-fold));
+}
+
+.halfRight.halfFolded {
+  transform: rotateY(calc(-1 * var(--nm-fold)));
+}
+
+.label {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--nm-text);
-  cursor: pointer;
-  transition:
-    color 220ms ease,
-    background-color 220ms ease;
-  -webkit-tap-highlight-color: transparent;
+  transition: color 280ms ease;
 }
 
-/* The pressed half darkens slightly and lifts its label contrast. */
-.optionActive {
+.halfActive .label {
   color: var(--nm-text-active);
-  background-color: var(--nm-press-inset);
-  cursor: default;
 }
 
-.option:focus-visible {
+.half:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: -3px;
   border-radius: 10px;
