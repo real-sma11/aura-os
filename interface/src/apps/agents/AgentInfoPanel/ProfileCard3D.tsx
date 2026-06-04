@@ -12,6 +12,7 @@ import {
   drawInfoStrip,
   drawPersonalityScreen,
   drawProfileCardTexture,
+  drawStatusBadge,
   loadCardAvatar,
 } from "./profile-card-texture";
 import styles from "./AgentInfoPanel.module.css";
@@ -171,28 +172,29 @@ export function ProfileCard3D({ agent, isOwnAgent }: ProfileCard3DProps) {
     scene.refreshBackTexture();
   }, [ready, agent.personality, agent.system_prompt, agent.role]);
 
-  // Draw the agent nameplate (name + role + Status) on the worn-metal
-  // backplate. Registers a renderer so the scene can redraw it on each
-  // status-dot blink.
+  // Draw the agent nameplate (name + role) on the worn-metal backplate.
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!ready || !scene) return;
+    scene.setInfoRenderer(() => {
+      drawInfoStrip(scene.infoCanvas, {
+        name: agent.name,
+        role: agent.role,
+      });
+    });
+  }, [ready, agent.name, agent.role]);
+
+  // Draw the status label on the card's metal frame (where the barcode was):
+  // green when online, red otherwise. Re-runs when the live status changes.
   useEffect(() => {
     const scene = sceneRef.current;
     const host = hostRef.current;
     if (!ready || !scene || !host) return;
     const accent = readAccent(host);
-    scene.setInfoRenderer((dotOn) => {
-      drawInfoStrip(
-        scene.infoCanvas,
-        {
-          name: agent.name,
-          role: agent.role,
-          statusLabel,
-          isOnline,
-          accent,
-        },
-        dotOn,
-      );
+    scene.setStatusRenderer(() => {
+      drawStatusBadge(scene.statusCanvas, { statusLabel, isOnline, accent });
     });
-  }, [ready, agent.name, agent.role, isOnline, statusLabel]);
+  }, [ready, statusLabel, isOnline]);
 
   return (
     <div className={styles.card3dContainer}>

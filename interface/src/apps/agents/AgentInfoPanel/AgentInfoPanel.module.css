@@ -53,8 +53,8 @@
   /* Taller than the card alone so the worn-metal info backplate that pokes out
      below the card stays visible; the card itself keeps the same on-screen size
      (framed to its width in the WebGL scene). The plate is now short (just the
-     name/role nameplate + Status row), so this is much tighter than before. */
-  aspect-ratio: 4 / 7.2;
+     name/role nameplate; Status moved onto the card), so this is tighter still. */
+  aspect-ratio: 4 / 6.3;
   /* The WebGL canvas is transparent; the dark card always renders in its dark
      variant and only this themed backdrop changes between light/dark, blending
      with the surrounding sidekick panel. */
@@ -89,10 +89,22 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  border-radius: var(--radius-lg, 14px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  /* Black glass: 90% opaque black with a frosted backdrop blur. */
-  background: rgba(0, 0, 0, 0.9);
+  /* Corners rounded to visually match the 3D metal card's rounded bottom. */
+  border-radius: 18px;
+  /* Diagonal metallic border: lighter at the top-left, darker toward the
+     bottom-right. Painted via the dual-background trick (a black padding-box
+     fill over a gradient border-box) so the gradient follows the rounded
+     corners, which border-image would otherwise square off. */
+  border: 1px solid transparent;
+  background:
+    linear-gradient(rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0.9)) padding-box,
+    linear-gradient(
+        135deg,
+        rgba(255, 255, 255, 0.4) 0%,
+        rgba(255, 255, 255, 0.06) 50%,
+        rgba(0, 0, 0, 0.55) 100%
+      )
+      border-box;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   box-shadow:

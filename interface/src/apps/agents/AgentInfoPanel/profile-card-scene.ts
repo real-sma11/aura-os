@@ -20,8 +20,10 @@ export interface ProfileCardScene {
    * card is flipped). The caller draws the agent's persona text into it.
    */
   readonly backScreenCanvas: HTMLCanvasElement;
-  /** Offscreen canvas the agent info strip is drawn into by the renderer. */
+  /** Offscreen canvas the agent name/role nameplate is drawn into. */
   readonly infoCanvas: HTMLCanvasElement;
+  /** Offscreen canvas the status label is drawn into (on the card frame). */
+  readonly statusCanvas: HTMLCanvasElement;
   setAccent(accent: string): void;
   /** Update the LCD scan-line color (independent of the accent). */
   setLineColor(color: string): void;
@@ -29,12 +31,10 @@ export interface ProfileCardScene {
   refreshTexture(): void;
   /** Mark the back LCD texture dirty after redrawing into `backScreenCanvas`. */
   refreshBackTexture(): void;
-  /**
-   * Register the function that redraws the info strip into `infoCanvas`. It is
-   * called immediately and again on every blink toggle (with `dotOn` flipped)
-   * so the status dot can pulse without the caller driving the animation.
-   */
-  setInfoRenderer(render: (dotOn: boolean) => void): void;
+  /** Register the function that redraws the nameplate into `infoCanvas`. */
+  setInfoRenderer(render: () => void): void;
+  /** Register the function that redraws the status label into `statusCanvas`. */
+  setStatusRenderer(render: () => void): void;
   dispose(): void;
 }
 
@@ -82,7 +82,7 @@ const WINDOW = { left: 0.07, right: 0.935, bottom: 0.056, top: 0.875 };
 const INFO_PLATE = {
   w: PORTRAIT_SHELL.w * 0.9, // 1.8
   top: -0.9, // tucked ~0.35 behind the card's lower area
-  bottom: -2.15, // short strip: just the name/role nameplate + Status row
+  bottom: -1.7, // short strip: just the name/role nameplate (Status moved to the card)
   depth: 0.1,
   bevel: 0.02,
   chamfer: 0.1, // 45-degree corner cuts, echoing the card silhouette
@@ -94,13 +94,14 @@ const INFO_PLATE = {
  * agent info readout is drawn (a transparent canvas mapped onto a plane just in
  * front of the plate). Inset from the plate edges; `canvasW` sets the texture
  * resolution and the canvas height is derived from the region's aspect ratio.
- * Holds only the name/role nameplate + the single Status row now; the rest of
- * the spec list, channel logos, and nav links live in the DOM metal card below.
+ * Holds only the name/role nameplate now; the Status indicator moved to the
+ * card's metal frame, and the spec list, channel logos, and nav links live in
+ * the DOM metal card below.
  */
 const INFO_TEXT = {
   w: 1.7,
   top: -1.3,
-  bottom: -1.96,
+  bottom: -1.63,
   canvasW: 1200,
 };
 
@@ -443,45 +444,6 @@ function createWearTexture(): THREE.CanvasTexture {
   return tex;
 }
 
-/**
- * Fake barcode: vertical bars of varying widths on a transparent background,
- * drawn in white so the material `color` + `opacity` can tint it to a subtle,
- * slightly-lighter-than-metal tone (etched/printed look). The bar pattern is
- * deterministic so it stays stable across rebuilds.
- */
-function createBarcodeTexture(): THREE.CanvasTexture {
-  const w = 512;
-  const h = 132;
-  const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext("2d");
-  if (ctx) {
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#ffffff";
-    let seed = 1;
-    const rand = (): number => {
-      const s = Math.sin(seed++ * 12.9898) * 43758.5453;
-      return s - Math.floor(s);
-    };
-    const margin = 10;
-    const top = 8;
-    const barH = h - top * 2;
-    let x = margin;
-    while (x < w - margin) {
-      const barW = 2 + Math.floor(rand() * 6);
-      const gap = 2 + Math.floor(rand() * 5);
-      ctx.globalAlpha = 0.75 + rand() * 0.25;
-      ctx.fillRect(x, top, barW, barH);
-      x += barW + gap;
-    }
-    ctx.globalAlpha = 1;
-  }
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
-
 /** Intrinsic aspect ratio (w/h) of the AURA wordmark PNG used as a fallback. */
 const WORDMARK_SRC = "/AURA_logo_text_mark.png";
 const WORDMARK_ASPECT = 3322 / 421;
@@ -562,9 +524,8 @@ export function createProfileCardScene(
   backScreenTexture.colorSpace = THREE.SRGBColorSpace;
   backScreenTexture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
 
-  // Agent info strip: a transparent canvas mapped onto a plane over the exposed
-  // part of the backplate. Drawn by an externally-supplied renderer; the status
-  // dot blinks via `infoDotOn` toggling in the animation loop.
+  // Agent nameplate: a transparent canvas mapped onto a plane over the exposed
+  // part of the backplate. Drawn by an externally-supplied renderer.
   const infoCanvas = document.createElement("canvas");
   infoCanvas.width = INFO_TEXT.canvasW;
   infoCanvas.height = Math.round(
@@ -582,8 +543,23 @@ export function createProfileCardScene(
     transparent: true,
     depthWrite: false,
   });
-  let infoRenderer: ((dotOn: boolean) => void) | null = null;
-  let infoDotOn = true;
+
+  // Status label: a transparent canvas mapped onto a small plane on the card's
+  // metal frame (where the barcode used to sit). Its pixel dimensions are set in
+  // `buildFace` to match the frame area's aspect; drawn by an external renderer.
+  const statusCanvas = document.createElement("canvas");
+  statusCanvas.width = 512;
+  statusCanvas.height = 132;
+  const statusTexture = new THREE.CanvasTexture(statusCanvas);
+  statusTexture.colorSpace = THREE.SRGBColorSpace;
+  statusTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  statusTexture.generateMipmaps = false;
+  statusTexture.minFilter = THREE.LinearFilter;
+  const statusMaterial = new THREE.MeshBasicMaterial({
+    map: statusTexture,
+    transparent: true,
+    depthWrite: false,
+  });
 
   const raycaster = new THREE.Raycaster();
   const pointerNdc = new THREE.Vector2();
@@ -689,16 +665,6 @@ export function createProfileCardScene(
     envMapIntensity: 0.7,
     vertexColors: true,
   });
-  // Fake barcode decal — white bars tinted to a medium grey and kept low-contrast
-  // via opacity so it reads as etched/printed.
-  const barcodeTexture = createBarcodeTexture();
-  const barcodeMaterial = new THREE.MeshBasicMaterial({
-    map: barcodeTexture,
-    color: 0x9a9a9a,
-    transparent: true,
-    opacity: 0.55,
-    depthWrite: false,
-  });
   // AURA wordmark decal — the app's actual wordmark PNG, tinted cool white.
   let wordmarkWidth = 0;
   let wordmarkAspect = WORDMARK_ASPECT;
@@ -758,6 +724,8 @@ export function createProfileCardScene(
   let shellMesh: THREE.Mesh | null = null;
   let frontScreenMesh: THREE.Mesh | null = null;
   let backScreenMesh: THREE.Mesh | null = null;
+  // Status label plane on the front face's metal frame (where the barcode was).
+  let statusMesh: THREE.Mesh | null = null;
   // Wordmark planes (front + back) resized when the logo aspect resolves.
   const wordmarkMeshes: THREE.Mesh[] = [];
 
@@ -874,6 +842,7 @@ export function createProfileCardScene(
     shellMesh = null;
     frontScreenMesh = null;
     backScreenMesh = null;
+    statusMesh = null;
     wordmarkMeshes.length = 0;
   }
 
@@ -982,25 +951,31 @@ export function createProfileCardScene(
     }
     ledGeo.dispose();
 
-    // Fake barcode decal centered in the bottom-right metal area.
-    const hwP = shell.w / 2;
-    const hhP = shell.h / 2;
-    const winRight = -hwP + WINDOW.right * shell.w;
-    const winBottom = -hhP + WINDOW.bottom * shell.h;
-    const winBottomRight = winBottom + 0.08; // raised right bottom (matches stepH)
-    const winLeft = -hwP + WINDOW.left * shell.w;
-    const bottomStepX = winLeft + (winRight - winLeft) * 0.6; // window bottom step
-    const outerBottom = -hhP;
-    const areaCx = (bottomStepX + winRight) / 2;
-    const areaCy = (winBottomRight + outerBottom) / 2;
-    const barcodeW = (winRight - bottomStepX) * 0.62;
-    const barcodeH = (winBottomRight - outerBottom) * 0.5;
-    const barcode = new THREE.Mesh(
-      new THREE.PlaneGeometry(barcodeW, barcodeH),
-      barcodeMaterial,
-    );
-    barcode.position.set(areaCx * mx, areaCy, frontZ + 0.003);
-    parent.add(barcode);
+    // Status label, centered in the bottom-right metal area (where the barcode
+    // used to sit). Front face only: the back's mirrored frame would flip the
+    // text, and the back shows the persona LCD anyway.
+    if (!mirror) {
+      const hwP = shell.w / 2;
+      const hhP = shell.h / 2;
+      const winRight = -hwP + WINDOW.right * shell.w;
+      const winBottom = -hhP + WINDOW.bottom * shell.h;
+      const winBottomRight = winBottom + 0.08; // raised right bottom (matches stepH)
+      const winLeft = -hwP + WINDOW.left * shell.w;
+      const bottomStepX = winLeft + (winRight - winLeft) * 0.6; // window bottom step
+      const outerBottom = -hhP;
+      const areaCx = (bottomStepX + winRight) / 2;
+      const areaCy = (winBottomRight + outerBottom) / 2;
+      const statusW = (winRight - bottomStepX) * 0.9;
+      const statusH = (winBottomRight - outerBottom) * 0.55;
+      // Match the status canvas aspect to the plane so the text is not stretched.
+      statusCanvas.height = Math.max(1, Math.round((statusCanvas.width * statusH) / statusW));
+      statusMesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(statusW, statusH),
+        statusMaterial,
+      );
+      statusMesh.position.set(areaCx, areaCy, frontZ + 0.003);
+      parent.add(statusMesh);
+    }
 
     return screen;
   }
@@ -1311,18 +1286,6 @@ export function createProfileCardScene(
       lineHaloMaterial.opacity = lineHaloOpacity * factor;
     }
 
-    // Blink the info-strip status dot: mostly on with a brief off beat (~1.85s
-    // cycle). Redraw only when the on/off state flips. Reduced motion keeps it
-    // steadily on.
-    if (idleAmp && infoRenderer) {
-      const on = Math.sin(t * 3.4) > -0.35;
-      if (on !== infoDotOn) {
-        infoDotOn = on;
-        infoRenderer(infoDotOn);
-        infoTexture.needsUpdate = true;
-      }
-    }
-
     renderFrame();
   }
 
@@ -1386,10 +1349,15 @@ export function createProfileCardScene(
       if (reducedMotion) renderFrame();
     },
     infoCanvas,
-    setInfoRenderer(render: (dotOn: boolean) => void): void {
-      infoRenderer = render;
-      render(infoDotOn);
+    setInfoRenderer(render: () => void): void {
+      render();
       infoTexture.needsUpdate = true;
+      if (reducedMotion) renderFrame();
+    },
+    statusCanvas,
+    setStatusRenderer(render: () => void): void {
+      render();
+      statusTexture.needsUpdate = true;
       if (reducedMotion) renderFrame();
     },
     dispose(): void {
@@ -1406,11 +1374,11 @@ export function createProfileCardScene(
       backScreenMaterial.dispose();
       accentMaterial.dispose();
       bezelMaterial.dispose();
-      barcodeMaterial.dispose();
       blueMetalMaterial.dispose();
       matteMaterial.dispose();
       plateMaterial.dispose();
       infoMaterial.dispose();
+      statusMaterial.dispose();
       wordmarkMaterial.dispose();
       lineMaterial.dispose();
       lineHaloMaterial.dispose();
@@ -1419,11 +1387,11 @@ export function createProfileCardScene(
       wearTexture.dispose();
       plateMetalTexture.dispose();
       plateWearTexture.dispose();
-      barcodeTexture.dispose();
       wordmarkTexture.dispose();
       screenTexture.dispose();
       backScreenTexture.dispose();
       infoTexture.dispose();
+      statusTexture.dispose();
       envRT.texture.dispose();
       pmrem.dispose();
       composer.dispose();

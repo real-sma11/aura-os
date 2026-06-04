@@ -350,16 +350,9 @@ export function drawPersonalityScreen(
 export interface DrawInfoStripOptions {
   name: string;
   role: string;
-  /** Human-readable status label, e.g. "Online". */
-  statusLabel: string;
-  /** Drives the status dot color (accent when online, red otherwise). */
-  isOnline: boolean;
-  /** Theme accent (CSS color) used for the online status dot + glow. */
-  accent: string;
 }
 
 const STRIP_SANS = '"Inter", "Helvetica Neue", Arial, sans-serif';
-const STRIP_MONO = '"SFMono-Regular", "DejaVu Sans Mono", "Menlo", monospace';
 
 /** Rounded rectangle path (manual, for broad canvas support). */
 function roundRectPath(
@@ -394,17 +387,16 @@ function engrave(
 }
 
 /**
- * Render the agent info readout onto the worn-metal backplate's exposed strip:
- * a stamped nameplate (name + role pill) over a single Status row. The
- * remaining spec rows (Organization, IP, Wallet) live in the DOM metal card
- * below the plate. Drawn on a transparent canvas so only the engraved text +
- * status dot overlay the 3D metal. `dotOn` toggles the blinking status
- * indicator; the caller redraws on each blink.
+ * Render the agent nameplate onto the worn-metal backplate's exposed strip: a
+ * stamped name on the left with a role pill on the right, vertically centered.
+ * The Status indicator now lives on the card's metal frame (see
+ * `drawStatusBadge`); the rest of the spec list, channel logos, and nav links
+ * live in the DOM metal card below the plate. Drawn on a transparent canvas so
+ * only the engraved text overlays the 3D metal.
  */
 export function drawInfoStrip(
   canvas: HTMLCanvasElement,
   opts: DrawInfoStripOptions,
-  dotOn: boolean,
 ): void {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
@@ -412,18 +404,21 @@ export function drawInfoStrip(
   const h = canvas.height;
   ctx.clearRect(0, 0, w, h);
 
-  const accent = parseAccent(opts.accent);
   const padL = 84;
   const padR = 84;
   const valueX = w - padR;
+  // Vertical center of the (short) nameplate canvas; both the name baseline and
+  // the role pill are positioned relative to it so they stay centered as the
+  // plate height changes.
+  const cy = h / 2;
 
-  // Name (stamped) on the left of the header row.
+  // Name (stamped) on the left, 20% smaller than before (154 -> 123).
   ctx.textBaseline = "alphabetic";
   ctx.textAlign = "left";
-  ctx.font = `700 154px ${STRIP_SANS}`;
-  engrave(ctx, opts.name || "Unnamed", padL, 162, "#f4f6f9");
+  ctx.font = `700 123px ${STRIP_SANS}`;
+  engrave(ctx, opts.name || "Unnamed", padL, cy + 42, "#f4f6f9");
 
-  // Role pill, right-aligned on the header row.
+  // Role pill, right-aligned, vertically centered on the name.
   const role = (opts.role || "").trim();
   if (role) {
     ctx.font = `600 60px ${STRIP_SANS}`;
@@ -433,7 +428,7 @@ export function drawInfoStrip(
     const pillH = 103;
     const pillW = tw + pillPad * 2;
     const pillX = valueX - pillW;
-    const pillY = 74;
+    const pillY = cy - pillH / 2;
     roundRectPath(ctx, pillX, pillY, pillW, pillH, 24);
     ctx.fillStyle = "rgba(8,10,13,0.7)";
     ctx.fill();
@@ -444,56 +439,53 @@ export function drawInfoStrip(
     ctx.fillText(label, pillX + pillPad, pillY + pillH / 2 + 22);
   }
 
-  // Divider: a dark groove with a light bevel below it.
-  const divY = 230;
-  ctx.lineWidth = 2.5;
-  ctx.strokeStyle = "rgba(0,0,0,0.5)";
-  ctx.beginPath();
-  ctx.moveTo(padL, divY);
-  ctx.lineTo(w - padR, divY);
-  ctx.stroke();
-  ctx.strokeStyle = "rgba(255,255,255,0.16)";
-  ctx.beginPath();
-  ctx.moveTo(padL, divY + 3);
-  ctx.lineTo(w - padR, divY + 3);
-  ctx.stroke();
+  ctx.textAlign = "left";
+}
 
-  // Spec rows: only Status stays on the plate; the rest moved to the DOM card.
-  const rows: Array<{ label: string; value: string; mono?: boolean; status?: boolean }> = [
-    { label: "Status", value: opts.statusLabel, status: true },
-  ];
+export interface DrawStatusBadgeOptions {
+  /** Human-readable status label, e.g. "Online". */
+  statusLabel: string;
+  /** Online uses the accent (green); offline/other uses a muted red. */
+  isOnline: boolean;
+  /** Theme accent (CSS color) used for the online label. */
+  accent: string;
+}
 
-  const firstRowY = 300;
-  const rowGap = (h - firstRowY - 30) / rows.length;
-  rows.forEach((row, i) => {
-    const y = firstRowY + rowGap * i + rowGap / 2;
+/**
+ * Render the status label onto the card's metal frame (where the barcode used
+ * to sit). Styled like the plate's `STATUS` label: all caps, engraved (a dark
+ * drop-shadow, no glow), green when online and a muted red otherwise. Drawn on
+ * a transparent canvas so only the text overlays the metal.
+ */
+export function drawStatusBadge(
+  canvas: HTMLCanvasElement,
+  opts: DrawStatusBadgeOptions,
+): void {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
 
-    ctx.textAlign = "left";
-    ctx.font = `600 58px ${STRIP_SANS}`;
-    engrave(ctx, row.label.toUpperCase(), padL, y, "#aab1ba");
+  const [ar, ag, ab] = parseAccent(opts.accent);
+  const color = opts.isOnline ? `rgb(${ar},${ag},${ab})` : "#e06a66";
 
-    ctx.textAlign = "right";
-    ctx.font = row.mono ? `500 56px ${STRIP_MONO}` : `600 66px ${STRIP_SANS}`;
-    if (row.status && opts.isOnline) {
-      // Online: match the accent LED "dots" above - a saturated accent core with
-      // a gently pulsing colored glow. The accent is kept a touch below full so
-      // the card's ACES tone mapping doesn't wash it toward white.
-      const [ar, ag, ab] = accent;
-      const k = 0.72;
-      ctx.save();
-      ctx.shadowColor = `rgba(${ar},${ag},${ab},${dotOn ? 0.65 : 0.45})`;
-      ctx.shadowBlur = dotOn ? 13 : 9;
-      ctx.fillStyle = `rgb(${Math.round(ar * k)},${Math.round(ag * k)},${Math.round(ab * k)})`;
-      ctx.fillText(row.value, valueX, y);
-      ctx.restore();
-    } else if (row.status) {
-      engrave(ctx, row.value, valueX, y, "#e06a66");
-    } else {
-      engrave(ctx, row.value, valueX, y, "#f4f6f9");
-    }
-  });
+  // Size the text to the canvas height so it fills the small frame area; align
+  // centered both ways. Uses the same family/weight as the STATUS label.
+  const fontPx = Math.round(h * 0.62);
+  ctx.font = `600 ${fontPx}px ${STRIP_SANS}`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  // engrave() draws at an alphabetic-ish baseline via fillText; here we want a
+  // middle baseline, so inline the drop-shadow + glyph rather than reuse it.
+  const label = (opts.statusLabel || "").toUpperCase();
+  ctx.fillStyle = "rgba(0,0,0,0.6)";
+  ctx.fillText(label, w / 2, h / 2 + 3);
+  ctx.fillStyle = color;
+  ctx.fillText(label, w / 2, h / 2);
 
   ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
 }
 
 export interface BrandIcon {
