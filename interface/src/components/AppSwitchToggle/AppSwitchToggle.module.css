@@ -105,8 +105,7 @@
   cursor: pointer;
   transition:
     background 90ms ease-out,
-    box-shadow 90ms ease-out,
-    transform 90ms ease-out;
+    box-shadow 90ms ease-out;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -124,7 +123,6 @@
 .halfActive {
   background: linear-gradient(135deg, var(--sw-active-from), var(--sw-active-to));
   z-index: 1;
-  transform: translateY(-1px);
 }
 
 .halfLeft.halfActive {
