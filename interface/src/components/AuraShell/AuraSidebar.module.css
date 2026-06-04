@@ -154,15 +154,17 @@
  * list's last row reaching the page nav links unmasked).
  */
 .sidebarBodyFadeAboveFooter {
-  /* Reserve clearance equal to the floating referral pill's footprint
-     (32px button + var(--space-2) top + var(--shell-chrome-inset)
-     bottom ~= 45px) plus a little breathing room, so every authed
-     list's scroll viewport ends ABOVE the pill and the last row can
-     scroll fully into the clear instead of staying covered by it. The
-     mask band below still overshoots this clearance, so the bottom
-     content edge keeps its soft dissolve. */
-  --aura-authed-footer-clearance: 48px;
-  padding-bottom: var(--aura-authed-footer-clearance);
+  /* Clearance equal to the floating referral pill's footprint (32px
+     button + var(--space-2) top + var(--shell-chrome-inset) bottom
+     ~= 45px) plus a little breathing room. This is NOT applied as
+     padding here anymore — that shrank the Lane so list rows ended
+     ABOVE the pill and never passed behind it. Instead the value is
+     published as a custom property that each left section's own
+     scroll container consumes as `padding-bottom`, so the Lane fills
+     the full sidebar height (rows scroll UNDER the pill and dissolve
+     via the mask below) while the last row can still scroll clear of
+     the pill. */
+  --aura-authed-footer-clearance: 52px;
   -webkit-mask-image: linear-gradient(
     to bottom,
     black calc(100% - 64px),

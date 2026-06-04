@@ -30,7 +30,11 @@
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
-  padding: 0 0 calc(var(--left-menu-fade-height) - 16px);
+  /* Reserve room for the floating "Refer member" pill so the last row
+     scrolls clear of it while earlier rows pass behind it. Falls back
+     to the in-list fade clearance when rendered outside the authed
+     sidebar (where the pill isn't mounted). */
+  padding: 0 0 var(--aura-authed-footer-clearance, calc(var(--left-menu-fade-height) - 16px));
   scrollbar-width: none;
 }
 
