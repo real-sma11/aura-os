@@ -47,6 +47,20 @@
   flex-direction: column;
 }
 
+/* Virtualized list: the container reserves the full scroll height while only
+   the visible rows (absolutely positioned via translateY) are mounted. */
+.virtualListContainer {
+  position: relative;
+  width: 100%;
+}
+
+.virtualRow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+}
+
 .scrollTrack {
   position: absolute;
   top: 0;

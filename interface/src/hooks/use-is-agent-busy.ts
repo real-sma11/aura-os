@@ -9,6 +9,8 @@ import { useSidekickStore } from "../stores/sidekick-store";
 import { isLoopActivityActive } from "../shared/types/aura-events";
 import { useStreamStore } from "./stream/store";
 
+const EMPTY_INSTANCE_IDS: string[] = [];
+
 /**
  * Aggregate "this agent template is actively working right now" signal
  * for any UI that pivots on a template `agent_id` (e.g. the agents-app
@@ -54,20 +56,16 @@ export function useIsAgentBusy(agentId: string | undefined | null): boolean {
     (s) => !!agentId && (s.entries[agentId]?.isStreaming ?? false),
   );
 
-  // Pull only the instance ids that belong to this template. `useShallow`
-  // keeps the array reference stable across unrelated agentsByProject
-  // edits so the downstream `.some()` subscription stays cheap.
+  // Look up only the instance ids that belong to this template. The
+  // `instanceIdsByTemplateId` index is maintained by the projects store on
+  // every `agentsByProject` write, so this is an O(1) read instead of an
+  // O(projects x instances) scan per row. `useShallow` keeps the array
+  // reference stable across unrelated edits so the downstream `.some()`
+  // subscription stays cheap.
   const templateInstanceIds = useProjectsListStore(
-    useShallow((s) => {
-      if (!agentId) return [] as string[];
-      const ids: string[] = [];
-      for (const list of Object.values(s.agentsByProject)) {
-        for (const inst of list) {
-          if (inst.agent_id === agentId) ids.push(inst.agent_instance_id);
-        }
-      }
-      return ids;
-    }),
+    useShallow((s) =>
+      agentId ? s.instanceIdsByTemplateId[agentId] ?? EMPTY_INSTANCE_IDS : EMPTY_INSTANCE_IDS,
+    ),
   );
 
   const isProjectChatStreaming = useSidekickStore((s) => {

@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Pin } from "lucide-react";
 import { formatChatTime } from "../../../shared/utils/format";
 import { stripEmojis } from "../../../shared/utils/text-normalize";
@@ -31,7 +32,7 @@ interface AgentConversationRowProps {
   onMouseEnter: () => void;
 }
 
-export function AgentConversationRow({
+function AgentConversationRowBase({
   agent,
   lastMessage,
   showMetadataOnly = false,
@@ -109,3 +110,11 @@ export function AgentConversationRow({
     </button>
   );
 }
+
+/**
+ * Memoized so that, with virtualization keeping only the visible rows
+ * mounted, an unrelated parent re-render (or a store update for a
+ * different agent) does not re-render every row. Effective only because
+ * the list passes referentially-stable callbacks.
+ */
+export const AgentConversationRow = memo(AgentConversationRowBase);

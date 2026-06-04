@@ -90,6 +90,15 @@ interface ProjectsListState {
   loadingProjects: boolean;
   projectsError: string | null;
   agentsByProject: Record<string, AgentInstance[]>;
+  /**
+   * Index of template `agent_id` -> the `agent_instance_id`s of every
+   * project instance spawned from that template. Maintained by a store
+   * subscription whenever `agentsByProject` changes so per-row consumers
+   * (e.g. `useIsAgentBusy` in the agents sidebar) can look a template's
+   * instances up in O(1) instead of scanning every project on every row
+   * render.
+   */
+  instanceIdsByTemplateId: Record<string, string[]>;
   loadingAgentsByProject: Record<string, boolean>;
   newProjectModalOpen: boolean;
 
@@ -199,6 +208,7 @@ export const useProjectsListStore = create<ProjectsListState>()((set, get) => ({
   loadingProjects: true,
   projectsError: null,
   agentsByProject: {},
+  instanceIdsByTemplateId: {},
   loadingAgentsByProject: {},
   newProjectModalOpen:
     typeof window !== "undefined" &&
@@ -413,6 +423,23 @@ export const useProjectsListStore = create<ProjectsListState>()((set, get) => ({
 // ---------------------------------------------------------------------------
 // Subscriptions
 // ---------------------------------------------------------------------------
+
+// Maintain the template -> instance-ids index whenever the underlying
+// `agentsByProject` map changes. Keeping it here (rather than threading it
+// through every writer) means it stays correct no matter which code path
+// mutated `agentsByProject`. The guard short-circuits the no-op fires this
+// subscription receives for unrelated state changes (including its own
+// `setState` below, which does not touch `agentsByProject`).
+useProjectsListStore.subscribe((state, prevState) => {
+  if (state.agentsByProject === prevState.agentsByProject) return;
+  const index: Record<string, string[]> = {};
+  for (const list of Object.values(state.agentsByProject)) {
+    for (const inst of list) {
+      (index[inst.agent_id] ??= []).push(inst.agent_instance_id);
+    }
+  }
+  useProjectsListStore.setState({ instanceIdsByTemplateId: index });
+});
 
 // Sync newProjectModalOpen to sessionStorage
 useProjectsListStore.subscribe((state, prevState) => {

@@ -1,5 +1,6 @@
 import { useMemo, useCallback, useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { Menu } from "@cypher-asi/zui";
 import type { MenuItem } from "@cypher-asi/zui";
@@ -96,25 +97,37 @@ interface AgentListProps {
   mode?: "default" | "responsive-controls" | "mobile-library";
 }
 
+interface AgentRowProps {
+  agent: Agent;
+  isMobileLibrary: boolean;
+  isSelected: boolean;
+  /** Id-arg callbacks so the list can pass referentially-stable handlers. */
+  onSelect: (agentId: string) => void;
+  onHover: (agentId: string) => void;
+  onContextMenu: (e: React.MouseEvent) => void;
+}
+
+// Thin wrapper that subscribes to this agent's preview message and feeds the
+// memoized presentational row. Deliberately NOT memoized itself: it re-renders
+// with its parent (cheap — one store read), but binds the per-row click/hover
+// closures from stable id-arg callbacks via `useCallback` so the heavy,
+// memoized `AgentConversationRow` only re-renders when its own inputs
+// (`lastMessage`, `isSelected`, the agent) actually change.
 function AgentConversationRowWithHistory({
   agent,
   isMobileLibrary,
   isSelected,
-  onClick,
+  onSelect,
+  onHover,
   onContextMenu,
-  onMouseEnter,
-}: {
-  agent: Agent;
-  isMobileLibrary: boolean;
-  isSelected: boolean;
-  onClick: () => void;
-  onContextMenu: (e: React.MouseEvent) => void;
-  onMouseEnter: () => void;
-}) {
+}: AgentRowProps) {
   const lastMessage = useChatHistoryStore((state) => {
     if (isMobileLibrary) return undefined;
     return state.previewLastMessages[agentHistoryKey(agent.agent_id)];
   });
+
+  const handleClick = useCallback(() => onSelect(agent.agent_id), [onSelect, agent.agent_id]);
+  const handleMouseEnter = useCallback(() => onHover(agent.agent_id), [onHover, agent.agent_id]);
 
   return (
     <AgentConversationRow
@@ -122,10 +135,102 @@ function AgentConversationRowWithHistory({
       lastMessage={lastMessage}
       showMetadataOnly={isMobileLibrary}
       isSelected={isSelected}
-      onClick={onClick}
+      onClick={handleClick}
       onContextMenu={onContextMenu}
-      onMouseEnter={onMouseEnter}
+      onMouseEnter={handleMouseEnter}
     />
+  );
+}
+
+const ESTIMATED_ROW_HEIGHT = 58;
+
+interface VirtualizedAgentRowsProps {
+  agents: Agent[];
+  scrollRef: React.RefObject<HTMLDivElement | null>;
+  selectedAgentId: string | undefined;
+  isMobileLibrary: boolean;
+  onSelect: (agentId: string) => void;
+  onHover: (agentId: string) => void;
+  onContextMenu: (e: React.MouseEvent) => void;
+}
+
+// Windowed agent list for the desktop sidebar. Only the visible rows (plus a
+// small overscan) are mounted, so revealing the pane (display:none -> visible)
+// and committing the list no longer lay out/paint all 15-45 rows at once —
+// which is what blocked the Agents/Projects switch crossfade. Mirrors the
+// proven `LeftMenuTree` virtualization that already runs in the same
+// keep-alive `LeftMenu` shell.
+function VirtualizedAgentRows({
+  agents,
+  scrollRef,
+  selectedAgentId,
+  isMobileLibrary,
+  onSelect,
+  onHover,
+  onContextMenu,
+}: VirtualizedAgentRowsProps) {
+  const virtualizer = useVirtualizer({
+    count: agents.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => ESTIMATED_ROW_HEIGHT,
+    getItemKey: (index) => agents[index]?.agent_id ?? index,
+    // A non-zero initial height lets the list window from the first paint
+    // even while the pane is still `display: none` (0-height scroll element),
+    // so revealing it never renders the whole list for a frame.
+    initialRect: { width: 0, height: 480 },
+    overscan: 8,
+  });
+  const virtualItems = virtualizer.getVirtualItems();
+
+  // Fallback for environments where the virtualizer can't measure (jsdom /
+  // a genuinely 0-height scroll element): render every row so nothing is
+  // lost. Mirrors `LeftMenuTree`.
+  if (virtualItems.length === 0) {
+    return (
+      <div className={styles.sidebarEntries}>
+        {agents.map((agent) => (
+          <AgentConversationRowWithHistory
+            key={agent.agent_id}
+            agent={agent}
+            isMobileLibrary={isMobileLibrary}
+            isSelected={agent.agent_id === selectedAgentId}
+            onSelect={onSelect}
+            onHover={onHover}
+            onContextMenu={onContextMenu}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={styles.virtualListContainer}
+      style={{ height: virtualizer.getTotalSize() }}
+    >
+      {virtualItems.map((item) => {
+        const agent = agents[item.index];
+        if (!agent) return null;
+        return (
+          <div
+            key={agent.agent_id}
+            ref={virtualizer.measureElement}
+            data-index={item.index}
+            className={styles.virtualRow}
+            style={{ transform: `translateY(${item.start}px)` }}
+          >
+            <AgentConversationRowWithHistory
+              agent={agent}
+              isMobileLibrary={isMobileLibrary}
+              isSelected={agent.agent_id === selectedAgentId}
+              onSelect={onSelect}
+              onHover={onHover}
+              onContextMenu={onContextMenu}
+            />
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -517,18 +622,6 @@ export function AgentList({ mode = "default" }: AgentListProps) {
     );
   }
 
-  const entries = filteredAgents.map((agent) => (
-    <AgentConversationRowWithHistory
-      key={agent.agent_id}
-      agent={agent}
-      isMobileLibrary={isMobileLibrary}
-      isSelected={agent.agent_id === agentId}
-      onClick={() => handleAgentRowClick(agent.agent_id)}
-      onContextMenu={handleContextMenu}
-      onMouseEnter={() => handleHoverPrefetch(agent.agent_id)}
-    />
-  ));
-
   return (
     <>
       {isDesktopSidebar ? (
@@ -542,7 +635,15 @@ export function AgentList({ mode = "default" }: AgentListProps) {
             className={styles.sidebarScrollArea}
             onContextMenu={handleContextMenu}
           >
-            <div className={styles.sidebarEntries}>{entries}</div>
+            <VirtualizedAgentRows
+              agents={filteredAgents}
+              scrollRef={scrollRef}
+              selectedAgentId={agentId}
+              isMobileLibrary={isMobileLibrary}
+              onSelect={handleAgentRowClick}
+              onHover={handleHoverPrefetch}
+              onContextMenu={handleContextMenu}
+            />
           </div>
           <div className={styles.scrollTrack}>
             <div
@@ -559,7 +660,17 @@ export function AgentList({ mode = "default" }: AgentListProps) {
           data-agent-surface="agent-list"
           data-agent-mode={mode}
         >
-          {entries}
+          {filteredAgents.map((agent) => (
+            <AgentConversationRowWithHistory
+              key={agent.agent_id}
+              agent={agent}
+              isMobileLibrary={isMobileLibrary}
+              isSelected={agent.agent_id === agentId}
+              onSelect={handleAgentRowClick}
+              onHover={handleHoverPrefetch}
+              onContextMenu={handleContextMenu}
+            />
+          ))}
         </div>
       )}
 
