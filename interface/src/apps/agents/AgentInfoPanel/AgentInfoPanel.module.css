@@ -105,18 +105,18 @@
      fill over a gradient border-box) so the gradient follows the rounded
      corners, which border-image would otherwise square off. */
   border: 1px solid transparent;
-  /* Theme-aware glass stack (layers paint top-to-bottom): a translucent tint
-     of the base background that stays see-through enough for the blur to read
-     everywhere, finished with a subtle edge gradient. Built from theme tokens
-     so the panel reads as smoked-black glass in dark mode and a frosted light
-     pane in light mode. `--color-bg` is near-black in dark / white in light, so
-     mixing it with transparent flips the whole tint with the active theme. */
+  /* Glass stack matching the bottom taskbar pill: the same angled charcoal ->
+     near-black fill gradient (theme-aware via the shared `--shell-pill-grad-*`
+     tokens), held at 90% opacity so the chrome blur reads through, finished
+     with the existing subtle edge gradient. The shell tokens flip between the
+     dark near-black chrome and the light brushed chrome with the active theme. */
   --spec-engrave: 0 1px 0 color-mix(in srgb, var(--color-bg) 55%, transparent);
   background:
     linear-gradient(
-        135deg,
-        color-mix(in srgb, var(--color-bg) 60%, transparent) 0%,
-        color-mix(in srgb, var(--color-bg) 32%, transparent) 100%
+        160deg,
+        color-mix(in srgb, color-mix(in srgb, #fff 2%, var(--shell-pill-grad-top)) 90%, transparent) 0%,
+        color-mix(in srgb, var(--shell-pill-grad-top) 90%, transparent) 40%,
+        color-mix(in srgb, var(--shell-pill-grad-bottom) 90%, transparent) 100%
       )
       padding-box,
     linear-gradient(
@@ -126,8 +126,8 @@
         transparent 100%
       )
       border-box;
-  backdrop-filter: blur(26px) saturate(135%);
-  -webkit-backdrop-filter: blur(26px) saturate(135%);
+  backdrop-filter: var(--shell-chrome-backdrop-filter, blur(40px) saturate(1.4));
+  -webkit-backdrop-filter: var(--shell-chrome-backdrop-filter, blur(40px) saturate(1.4));
   box-shadow:
     inset 0 1px 0 var(--color-overlay-light),
     0 10px 30px -12px var(--color-backdrop-medium);
