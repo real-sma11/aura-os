@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@cypher-asi/zui";
 import styles from "./AppSwitchToggle.module.css";
@@ -34,6 +35,17 @@ export interface AppSwitchToggleProps {
 export function AppSwitchToggle({ active }: AppSwitchToggleProps): React.ReactElement {
   const navigate = useNavigate();
 
+  // Flip the visual selection optimistically on click so the switch feels
+  // instant, instead of waiting for `navigate` to mount the target app and
+  // push down a new `active` prop. The pending value clears once the real
+  // route catches up.
+  const [pending, setPending] = useState<AppSwitchOptionId | null>(null);
+  const selected = pending ?? active;
+
+  useEffect(() => {
+    if (pending === active) setPending(null);
+  }, [pending, active]);
+
   return (
     <div className={styles.wrap}>
       <div className={styles.plate}>
@@ -43,7 +55,7 @@ export function AppSwitchToggle({ active }: AppSwitchToggleProps): React.ReactEl
           aria-label="Switch between Agents and Projects"
         >
           {OPTIONS.map((option) => {
-            const isActive = option.id === active;
+            const isActive = option.id === selected;
             return (
               <button
                 key={option.id}
@@ -56,6 +68,7 @@ export function AppSwitchToggle({ active }: AppSwitchToggleProps): React.ReactEl
                 aria-pressed={isActive}
                 onClick={() => {
                   if (isActive) return;
+                  setPending(option.id);
                   navigate(option.path);
                 }}
               >
