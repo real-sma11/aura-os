@@ -40,7 +40,8 @@
 .heroBand {
   display: grid;
   place-items: center;
-  min-height: clamp(150px, 20vh, 280px);
+  /* ~50vh so the mock desktop below starts halfway down the page. */
+  min-height: clamp(280px, 50vh, 560px);
 }
 
 /*
@@ -76,7 +77,12 @@
   display: grid;
   place-items: center;
   width: 100%;
-  height: clamp(420px, 66vh, 760px);
+  /*
+   * Drives the frame size (the window is height-bound off this
+   * container). The window starts halfway down (see `.heroBand`) and
+   * extends below the fold, so the visitor scrolls to reveal the rest.
+   */
+  height: clamp(452px, 71vh, 826px);
 }
 
 /*
