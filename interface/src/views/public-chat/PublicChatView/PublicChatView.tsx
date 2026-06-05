@@ -710,7 +710,7 @@ export function PublicChatView(): React.ReactElement {
         </form>
       ) : (
         <div className={styles.ctaSlot}>
-          <CreateAgentButton />
+          <CreateAgentButton source="public_chat" />
         </div>
       )}
       <div className={styles.preloadStash} aria-hidden="true">

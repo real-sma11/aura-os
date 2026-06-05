@@ -1,5 +1,6 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
+import { track } from "../../../lib/analytics";
 import styles from "./CreateAgentButton.module.css";
 
 interface CreateAgentButtonProps {
@@ -18,6 +19,13 @@ interface CreateAgentButtonProps {
    * `(0,1,0)` so overrides only need `(0,2,0)` to win.
    */
   readonly className?: string;
+  /**
+   * Which public surface mounted the pill, recorded as the `source`
+   * property on the `public_create_agent_clicked` event so the
+   * landing→signup funnel can be split by entry point (e.g.
+   * `public_chat` vs `product_hero`). Defaults to `public_landing`.
+   */
+  readonly source?: string;
 }
 
 /**
@@ -50,6 +58,7 @@ interface CreateAgentButtonProps {
  */
 export function CreateAgentButton({
   className,
+  source = "public_landing",
 }: CreateAgentButtonProps = {}): React.ReactElement {
   const navigate = useNavigate();
   const location = useLocation();
@@ -67,11 +76,12 @@ export function CreateAgentButton({
       // while `AuraShell` overlays the `LoginOverlay` on top.
       // Without this state the public page would unmount and
       // `PublicChatView` would flash in behind the modal.
-      onClick={() =>
+      onClick={() => {
+        track("public_create_agent_clicked", { source });
         navigate("/login?tab=register", {
           state: { backgroundLocation: location },
-        })
-      }
+        });
+      }}
     >
       <span className={styles.ctaLabel}>Create your agent</span>
       <ArrowRight size={16} strokeWidth={2} aria-hidden="true" />
