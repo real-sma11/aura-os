@@ -65,7 +65,18 @@ import {
 } from "./stream/partition-state";
 import { STUCK_THRESHOLD_MS } from "./stream/use-stream-health";
 import type { StreamCloseContext } from "../shared/observability/stream-breadcrumbs";
+import { recordStreamCloseReason } from "../shared/observability/stream-breadcrumbs";
+import { isStreamDroppedError } from "./stream/handlers/lifecycle";
 import { applySubagentStatus, registerSpawnedSubagent } from "./use-chat-stream/subagent-cards";
+
+/**
+ * Auto-retry budget for transient stream drops on the standalone-agent
+ * surface. Mirrors `MAX_AUTO_RETRIES` in `use-chat-stream.ts` so a
+ * `stream_stalled` / `turn_timeout` / WS drop on a CEO (or any
+ * standalone) agent silently reconnects instead of stranding the user
+ * on a hard "Chat stream interrupted" bubble.
+ */
+const MAX_AUTO_RETRIES = 4;
 
 /**
  * Per-streamKey cache of the most recent `sendMessage` payload plus
@@ -227,6 +238,22 @@ export function useAgentChatStream({
         sourceImageUrl: _sourceImageUrl,
       };
 
+      // Auto-retry bookkeeping. The standalone surface reuses the
+      // project-chat send-control map purely for the `(autoRetryCount,
+      // retryTimer, inAutoRetry)` triad here (it already borrows
+      // `reattaching` from the same map in `tryReattachActiveTurn`).
+      // `inAutoRetry` is a one-shot set by the retry timer below: it
+      // tells this re-entry to skip re-appending the user bubble (it's
+      // already on screen) and bypass the in-flight queue guard, and it
+      // preserves the retry budget. A genuine new user send instead
+      // resets the budget so each prompt gets a fresh set of retries.
+      const sendControl = getPartitionSendControl(core.key);
+      const isAutoRetry = sendControl.inAutoRetry;
+      sendControl.inAutoRetry = false;
+      if (!isAutoRetry) {
+        sendControl.autoRetryCount = 0;
+      }
+
       // Phase 3: mutable holder for the in-flight partition key so
       // mid-turn `SessionReady` (fresh-canvas placeholder → real
       // session id) and `auto_fork` migrations can re-key all of this
@@ -252,7 +279,7 @@ export function useAgentChatStream({
       // gone past `STUCK_THRESHOLD_MS` without a wire event, mark the
       // entry with `pendingDueToStuckStream` so a Phase 2 banner can
       // offer "Send anyway" — Phase 1 just preserves the message.
-      if (getIsStreaming(getPartitionKey())) {
+      if (getIsStreaming(getPartitionKey()) && !isAutoRetry) {
         const lastEventAt = getLastEventAt(getPartitionKey());
         const isStuck =
           lastEventAt != null && Date.now() - lastEventAt >= STUCK_THRESHOLD_MS;
@@ -277,7 +304,13 @@ export function useAgentChatStream({
         is3DModelStep ? "Generate 3D model" : undefined,
       );
 
-      partitionSetters.setEvents((prev) => [...prev, userMsg]);
+      // On an auto-retry re-entry the user's message is already in
+      // `events` from the original send, so re-appending would
+      // duplicate the bubble. The harness rehydrates the turn from
+      // session history by `aura_session_id`.
+      if (!isAutoRetry) {
+        partitionSetters.setEvents((prev) => [...prev, userMsg]);
+      }
       partitionSetters.setIsStreaming(true);
       resetStreamBuffers(refs, partitionSetters);
 
@@ -322,6 +355,54 @@ export function useAgentChatStream({
         get streamKey() { return partitionState.key; },
         agentId,
         sessionId: sessionIdRef.current ?? undefined,
+      };
+
+      // Standalone-agent mirror of `useChatStream`'s `tryAutoRetry`.
+      // When a turn closes with a transient drop (`stream_stalled`,
+      // `turn_timeout`, harness-WS errors, SSE idle), silently recover
+      // instead of surfacing a hard error: reconnect-first (rejoin a
+      // still-live server turn), then fall back to re-issuing the last
+      // send. Bounded by `MAX_AUTO_RETRIES`. Returns `true` when it
+      // owns the recovery so the caller skips the error bubble.
+      const tryAutoRetry = (error: unknown): boolean => {
+        if (controller.signal.aborted) return false;
+        const ctrl = getPartitionSendControl(getPartitionKey());
+        if (ctrl.autoRetryCount >= MAX_AUTO_RETRIES) return false;
+        const replay = peekPartitionAgentReplay(getPartitionKey());
+        if (!replay?.lastSendArgs || !replay.sendFn) return false;
+        ctrl.autoRetryCount += 1;
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : typeof error === "string"
+              ? error
+              : "stream dropped";
+        recordStreamCloseReason(
+          { classified: "streamDropped", message: errorMessage, auto_retry: true },
+          breadcrumbContext,
+        );
+        // Drop any partial assistant state from the dead turn and swap
+        // the would-be error bubble for a transient "Reconnecting…"
+        // banner. `resetStreamBuffers` leaves `isStreaming` true so the
+        // indicator keeps showing while we back off.
+        resetStreamBuffers(refs, partitionSetters);
+        partitionSetters.setProgressText("Reconnecting…");
+        const delayMs = 1000 * ctrl.autoRetryCount;
+        if (ctrl.retryTimer != null) clearTimeout(ctrl.retryTimer);
+        ctrl.retryTimer = setTimeout(() => {
+          ctrl.retryTimer = null;
+          void (async () => {
+            // Reconnect-first: the harness keeps a turn alive on a
+            // passive SSE drop, so rejoin the live stream before
+            // re-POSTing. A server-side `stream_stalled` has no live
+            // turn to find, so reattach returns false and we resend.
+            const reattached = await tryReattachActiveTurnRef.current?.();
+            if (reattached) return;
+            ctrl.inAutoRetry = true;
+            await replayLastSend(getPartitionKey());
+          })();
+        }, delayMs);
+        return true;
       };
 
       const handler: StreamEventHandler = {
@@ -566,11 +647,19 @@ export function useAgentChatStream({
             case EventType.GenerationError:
               partitionSetters.clearGeneration();
               inFlightRef.current = false;
-              handleStreamError(refs, partitionSetters, event.content.message, breadcrumbContext);
+              handleStreamError(refs, partitionSetters, event.content, breadcrumbContext);
               break;
             case EventType.Error:
               inFlightRef.current = false;
-              handleStreamError(refs, partitionSetters, event.content.message, breadcrumbContext);
+              // Pass the FULL error payload (not just `.message`) so the
+              // `code` survives — that's what classifies `stream_stalled`
+              // / `turn_timeout` as a recoverable `streamDropped` rather
+              // than a hard error. Give auto-retry first crack before
+              // rendering any error bubble.
+              if (isStreamDroppedError(event.content) && tryAutoRetry(event.content)) {
+                break;
+              }
+              handleStreamError(refs, partitionSetters, event.content, breadcrumbContext);
               break;
             case EventType.Done:
               inFlightRef.current = false;
@@ -581,6 +670,11 @@ export function useAgentChatStream({
         onError: (error) => {
           if (controller.signal.aborted) return;
           inFlightRef.current = false;
+          // Transport-level drops (SSE idle timeout, WS close) recover
+          // the same way as an in-band `Error` frame.
+          if (isStreamDroppedError(error) && tryAutoRetry(error)) {
+            return;
+          }
           handleStreamError(refs, partitionSetters, error, breadcrumbContext);
         },
         onDone: () => {

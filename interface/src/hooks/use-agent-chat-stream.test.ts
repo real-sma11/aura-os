@@ -1,5 +1,6 @@
 import { renderHook, act } from "@testing-library/react";
-import { useAgentChatStream } from "./use-agent-chat-stream";
+import { useAgentChatStream, _resetAgentChatStreamReplayMap } from "./use-agent-chat-stream";
+import { _resetAllPartitionSendControl } from "./stream/partition-state";
 import { useStreamStore, streamMetaMap } from "./stream/store";
 import { useChatUIStore } from "../stores/chat-ui-store";
 import { useMessageQueueStore } from "../stores/message-queue-store";
@@ -45,6 +46,8 @@ import {
 describe("useAgentChatStream", () => {
   beforeEach(() => {
     streamMetaMap.clear();
+    _resetAllPartitionSendControl();
+    _resetAgentChatStreamReplayMap();
     useStreamStore.setState({ entries: {} });
     useChatUIStore.setState({ streams: {} });
     useMessageQueueStore.setState({ queues: {} });
@@ -136,6 +139,66 @@ describe("useAgentChatStream", () => {
       "child-b",
     ]);
     expect(council?.councilMembers?.[1].status).toBe("completed");
+  });
+
+  it("auto-reconnects on a stream_stalled error instead of showing a hard error bubble", async () => {
+    vi.useFakeTimers();
+    let calls = 0;
+    vi.mocked(api.agents.sendEventStream).mockImplementation(
+      async (_id, _content, _action, _model, _attachments, handler) => {
+        calls += 1;
+        if (calls === 1) {
+          // First turn: the server turn watchdog fires after 180s with
+          // no harness events. The `code` is what classifies this as a
+          // recoverable drop rather than a hard error.
+          handler?.onEvent({
+            type: EventType.Error,
+            content: {
+              message:
+                "Remote agent did not emit any stream events within 180s. (support_id=abc123)",
+              code: "stream_stalled",
+            },
+          } as unknown as AuraEvent);
+        } else {
+          handler?.onEvent({
+            type: EventType.TextDelta,
+            content: { text: "recovered answer" },
+          } as AuraEvent);
+          handler?.onEvent({ type: EventType.Done, content: {} } as AuraEvent);
+        }
+      },
+    );
+
+    const { result } = renderHook(() =>
+      useAgentChatStream({ agentId: "agent-1" }),
+    );
+
+    await act(async () => {
+      await result.current.sendMessage("hello");
+    });
+
+    // The dropped turn must NOT render a hard error bubble; instead the
+    // indicator flips to a transient reconnect banner and the retry is
+    // scheduled.
+    let entry = useStreamStore.getState().entries[result.current.streamKey];
+    expect(
+      entry.events.some((e) => e.displayVariant === "streamDropped"),
+    ).toBe(false);
+    expect(entry.progressText).toBe("Reconnecting…");
+    expect(calls).toBe(1);
+
+    // Backoff elapses -> reattach finds no live stream (no `api.streams`
+    // mock) -> the last send is replayed and now succeeds.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+
+    entry = useStreamStore.getState().entries[result.current.streamKey];
+    expect(calls).toBe(2);
+    // The retry must not duplicate the user's message bubble.
+    expect(entry.events.filter((e) => e.role === "user")).toHaveLength(1);
+
+    vi.useRealTimers();
   });
 
   it("routes image generation through the dedicated image stream", async () => {

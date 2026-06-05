@@ -167,6 +167,14 @@ pub(crate) async fn remote_agent_lifecycle(
         .await
         .map_err(|e| ApiError::internal(format!("failed to parse gateway response: {e}")))?;
 
+    // Every valid lifecycle action recycles or pauses the VM's harness
+    // run, so any warm `chat_session` we hold for this agent now points
+    // at a stale run. `ChatSession::is_alive` can't see that (it only
+    // checks the local command channel), so drop the warm entries and
+    // let the next chat turn cold-open against the live VM instead of
+    // stalling until the first-event watchdog.
+    state.evict_chat_sessions_for_agent(&agent_id);
+
     let _ = state.event_broadcast.send(serde_json::json!({
         "type": "remote_agent_state_changed",
         "agent_id": agent_id,

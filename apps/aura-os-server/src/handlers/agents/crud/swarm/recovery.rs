@@ -59,6 +59,14 @@ pub(crate) async fn recover_remote_agent_pipeline(
     })
     .await?;
 
+    // The old VM (and its harness run) is gone, but any warm
+    // `chat_session` we held still points at the dead WS — and
+    // `ChatSession::is_alive` only checks the command channel, so the
+    // next turn would reuse it and silently stall until the 180s
+    // first-event watchdog fires. Evict so the next send cold-opens
+    // against the freshly-provisioned VM.
+    state.evict_chat_sessions_for_agent(&net_agent.id);
+
     Ok(ReprovisionedRemoteAgent {
         agent,
         status: "running".to_string(),

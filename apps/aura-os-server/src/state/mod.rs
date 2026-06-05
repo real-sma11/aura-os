@@ -533,4 +533,46 @@ impl AppState {
             HarnessMode::Swarm => self.swarm_harness.as_ref(),
         }
     }
+
+    /// Drop every warm [`ChatSession`] owned by `agent_id` from the
+    /// registry. The next chat turn on any of that agent's partitions
+    /// then cold-opens a fresh harness session.
+    ///
+    /// Used whenever the agent's underlying runtime changes out from
+    /// under us — a permissions/config update ([`crate::handlers::agents`]
+    /// update path) or a remote VM being recovered / restarted. A
+    /// recycled Swarm VM leaves the old session's command channel open
+    /// (so [`ChatSession::is_alive`] still reports `true`) while the
+    /// upstream run is gone, which strands the next turn until the
+    /// 180s first-event watchdog fires. Evicting here forces a clean
+    /// reconnect instead.
+    ///
+    /// Best-effort and lock-light: collect the matching composite keys
+    /// (releasing each shard lock) before removing so we never hold a
+    /// `DashMap` ref across the mutation.
+    pub(crate) fn evict_chat_sessions_for_agent(&self, agent_id: &str) {
+        evict_chat_sessions_for_agent_in_registry(&self.chat_sessions, agent_id);
+    }
+}
+
+/// Drop every [`ChatSession`] in `registry` whose `template_agent_id`
+/// matches `agent_id`. Extracted from
+/// [`AppState::evict_chat_sessions_for_agent`] so the eviction logic
+/// can be unit-tested against a hand-built registry without
+/// standing up a full [`AppState`]. Collect-then-remove keeps the
+/// per-shard locks from being held across the mutation.
+pub(crate) fn evict_chat_sessions_for_agent_in_registry(
+    registry: &ChatSessionRegistry,
+    agent_id: &str,
+) {
+    let keys_to_drop: Vec<ChatSessionKey> = registry
+        .iter()
+        .filter_map(|entry| {
+            let owner = entry.value().template_agent_id.as_deref()?;
+            (owner == agent_id).then(|| entry.key().clone())
+        })
+        .collect();
+    for key in keys_to_drop {
+        registry.remove(&key);
+    }
 }
