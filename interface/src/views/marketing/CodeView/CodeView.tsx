@@ -45,6 +45,7 @@ export function CodeView(): ReactNode {
           />
         }
         stageClassName={styles.desktopStage}
+        stageHidden
         stage={
           <MockAuraApp
             desktopBackgroundUrl="/personas/vibecoder/desktop.png"
@@ -52,7 +53,6 @@ export function CodeView(): ReactNode {
           />
         }
       />
-      <div aria-hidden="true" hidden />{/* placeholder removed */}
       <ChangelogPreview />
       <ProductCallToAction href="/download" label="DOWNLOAD" />
     </div>

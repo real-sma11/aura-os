@@ -1,0 +1,79 @@
+/*
+ * MarketingFirstScreen — the shared "hero text band on top, large
+ * content stage below" layout used by BOTH the `/code` page
+ * (`CodeView`, mock desktop in the stage) and the `/agents` page
+ * (`ProductView`, orb video + agent marquee in the stage).
+ *
+ * Owning the band height and the stage height/start in ONE place is
+ * what guarantees the two pages line up: the hero text is centered in
+ * an identical band, and the stage content (mock desktop vs. agent
+ * cards) begins at the same vertical position on both pages. Page-
+ * specific content sizing (the desktop's container-query footprint,
+ * the orb video placement) is layered on via the `stageClassName`
+ * prop in each consuming view's own module CSS.
+ */
+.firstScreen {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(8px, 1.5vh, 20px);
+  padding: clamp(12px, 2vh, 32px) var(--space-4, 16px) clamp(20px, 3vh, 40px);
+  background: var(--marketing-section-bg);
+}
+
+/*
+ * Hero text band. Vertically (and horizontally) centers the PageHero
+ * stack in a short band above the stage instead of letting PageHero's
+ * `centered` mode reserve the full body height (which would push the
+ * stage entirely below the fold). The `~50vh` floor/ceiling clamp is
+ * what makes the stage below start halfway down the page on both
+ * pages.
+ */
+.heroBand {
+  display: grid;
+  place-items: center;
+  min-height: clamp(280px, 50vh, 560px);
+  /*
+   * Own stacking context above the stage below it. On `/agents` the
+   * orb video's gradient-faded top edge extends up out of the stage
+   * toward this band; the `z-index` keeps the headline / description /
+   * CTA painting above that soft glow. Harmless on `/code`, whose
+   * stage content stays within its own box.
+   */
+  position: relative;
+  z-index: 1;
+}
+
+/*
+ * Neutralize PageHero's full-body-height centered layout so it sits
+ * compactly inside `.heroBand`. The `:global` escapes the CSS-module
+ * hash to reach PageHero's plain global class names, scoped under the
+ * module-hashed `.heroBand` so only the first-screen hero is affected.
+ */
+.heroBand :global(.pageHero.pageHeroCentered) {
+  min-height: 0;
+  width: 100%;
+}
+
+.heroBand :global(.pageHeroContentCentered) {
+  flex: 0 0 auto;
+  min-height: 0;
+  padding-block: 0;
+}
+
+/*
+ * Content stage below the hero band. Hosts the consuming view's large
+ * first-screen element (the `MockAuraApp` mock desktop on `/code`, the
+ * orb video + agent marquee on `/agents`). `container-type: size`
+ * makes it a query container with a DEFINITE block size so any
+ * content sized in `cqw`/`cqh` units (the mock desktop frame) resolves
+ * against a real height instead of collapsing to 0. The viewport-
+ * derived `height` (not `min-height`) supplies that definite block
+ * size; `place-items: center` centers the content in the stage.
+ */
+.stage {
+  container-type: size;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: clamp(452px, 71vh, 826px);
+}

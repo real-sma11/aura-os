@@ -127,3 +127,111 @@
  * so the same pill now paints identically on the landing surface and
  * the product hero with no per-surface chrome rule needed here.
  */
+
+/*
+ * Orb stage — the `/agents` page's content for the shared
+ * `MarketingFirstScreen` stage. It hosts the looping orb video
+ * (`AURA_visual_loop.mp4`) with the `<AgentMarquee />` agent cards
+ * overlaid on top. The stage's shared height/start (see
+ * `MarketingFirstScreen.module.css`) is what makes the cards begin at
+ * the same vertical position as the `/code` page's mock desktop; the
+ * rules below place the orb behind the cards and pull the card row up
+ * so the TOP of the cards lines up with where that desktop starts.
+ *
+ * `.orbStage` is appended to the shared `.stage` (which already sets
+ * `display: grid; place-items: center`), so the single `.orb` child is
+ * centered; `.orb` then stretches to fill the stage as its own
+ * positioning context.
+ */
+.orbStage {
+  /* Let the lifted/hovered marquee cards overflow the stage box
+     without being clipped — the orb video has its own clip box
+     (`.orbVideoClip`) so the decorative loop is still contained. */
+  overflow: visible;
+}
+
+.orb {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/*
+ * Clip box for the orb video. Pinned to the stage rectangle, but
+ * clipped only on the LEFT, RIGHT, and BOTTOM (via `clip-path`'s
+ * negative top inset) so the scaled video never causes horizontal page
+ * overflow or bleeds into the section below — while its gradient-faded
+ * TOP edge stays visible above the cards, extending up toward the hero
+ * band. Kept separate from `.orb` so the marquee sibling can still
+ * overflow on hover. The hero band sets its own `z-index` (see
+ * `MarketingFirstScreen.module.css`) so the headline always paints
+ * above this soft orb glow.
+ */
+.orbVideoClip {
+  position: absolute;
+  inset: 0;
+  clip-path: inset(-100vh 0 0 0);
+  z-index: 0;
+  pointer-events: none;
+}
+
+/*
+ * The looping orb video, centered horizontally and anchored so its
+ * bright center sits on the agent card row. `top` matches the card
+ * row's vertical center (the marquee row is pulled up to ~12px below
+ * the stage top — see `.orbMarquee` — and the cards are 385px tall, so
+ * their center lands ~204px down). `transform: scale(1.44)` enlarges
+ * the orb the same amount the former hero flow video did; the clip box
+ * trims the overflow. The two-layer mask (linear top/bottom fade +
+ * radial corner vignette, composited via `intersect`) is ported from
+ * the old `.pageHeroFlowVideo` rule so the orb melts into the page bg
+ * instead of reading as a hard rectangle.
+ */
+.orbVideo {
+  position: absolute;
+  left: 50%;
+  top: 204px;
+  width: 100%;
+  aspect-ratio: 1280 / 720;
+  height: auto;
+  transform: translate(-50%, -50%) scale(1.44);
+  transform-origin: center;
+  pointer-events: none;
+  mask-image:
+    linear-gradient(
+      to bottom,
+      transparent 0%,
+      #000 30%,
+      #000 70%,
+      transparent 100%
+    ),
+    radial-gradient(ellipse at center, #000 50%, transparent 100%);
+  mask-composite: intersect;
+  -webkit-mask-image:
+    linear-gradient(
+      to bottom,
+      transparent 0%,
+      #000 30%,
+      #000 70%,
+      transparent 100%
+    ),
+    radial-gradient(ellipse at center, #000 50%, transparent 100%);
+  -webkit-mask-composite: source-in;
+}
+
+/*
+ * Agent card row overlaid on the orb. `<AgentMarquee />` carries an
+ * internal 64px top/bottom buffer band (so hovered cards don't clip
+ * against its own mask). `translateY(-52px)` pulls that buffer mostly
+ * above the stage so the VISIBLE card row starts ~12px below the stage
+ * top — matching the small inset of the centered mock desktop on
+ * `/code`. `z-index: 1` keeps the cards above the orb video.
+ */
+.orbMarquee {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  transform: translateY(-52px);
+}

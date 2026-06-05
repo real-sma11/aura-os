@@ -10,6 +10,7 @@ import {
 } from "../FeaturePanel/FeaturePanel";
 import { CreateAgentButton } from "../../public-chat/CreateAgentButton";
 import { TypewriterText } from "../../public-chat/TypewriterText";
+import { MarketingFirstScreen } from "../MarketingFirstScreen";
 import { PageHero } from "../PageHero";
 import { ProductCallToAction } from "../ProductCallToAction";
 import styles from "./ProductView.module.css";
@@ -57,21 +58,44 @@ export function ProductView(): ReactNode {
 
   return (
     <div className={styles.productView}>
-      <PageHero
-        headline={
-          <span
-            className={styles.headlineReserve}
-            data-text={HERO_HEADLINE}
-          >
-            <TypewriterText text={HERO_HEADLINE} speedMs={45} />
-          </span>
+      <MarketingFirstScreen
+        hero={
+          <PageHero
+            headline={
+              <span
+                className={styles.headlineReserve}
+                data-text={HERO_HEADLINE}
+              >
+                <TypewriterText text={HERO_HEADLINE} speedMs={45} />
+              </span>
+            }
+            description="AURA agents run on a secure virtual machine that is yours, keeping your data completely secure."
+            preview={null}
+            centered
+            headlineCta={<CreateAgentButton source="product_hero" />}
+          />
         }
-        description="AURA agents run on a secure virtual machine that is yours, keeping your data completely secure."
-        preview={null}
-        centered
-        backgroundVideoSrc="/AURA_visual_loop.mp4"
-        headlineCta={<CreateAgentButton source="product_hero" />}
-        videoOverlay={<AgentMarquee />}
+        stageClassName={styles.orbStage}
+        stage={
+          <div className={styles.orb}>
+            <div className={styles.orbVideoClip} aria-hidden="true">
+              <video
+                className={styles.orbVideo}
+                src="/AURA_visual_loop.mp4"
+                width={1280}
+                height={720}
+                autoPlay
+                loop
+                muted
+                playsInline
+                aria-hidden="true"
+              />
+            </div>
+            <div className={styles.orbMarquee}>
+              <AgentMarquee />
+            </div>
+          </div>
+        }
       />
       <AgentChatSection />
       <FeaturePanel
