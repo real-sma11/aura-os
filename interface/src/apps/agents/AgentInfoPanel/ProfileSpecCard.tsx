@@ -32,7 +32,7 @@ export interface ProfileSpecCardProps {
 
 /**
  * DOM companion to the 3D metal card: a worn-metal-styled panel that carries the
- * detail rows (Organization, IP, Wallet), the messaging-channel logos, and the
+ * detail rows (Org, IP, Wallet), the messaging-channel logos, and the
  * clickable Skills/Connectors/Permissions navigation that previously lived on
  * the lower part of the WebGL backplate.
  */
@@ -54,7 +54,7 @@ export function ProfileSpecCard({ agent, sections }: ProfileSpecCardProps) {
 
   const rows = useMemo<SpecRow[]>(() => {
     const list: SpecRow[] = [
-      { label: "Organization", value: orgName ?? "—" },
+      { label: "Org", value: orgName ?? "—" },
       { label: "IP", value: ip ?? "—", mono: true, copyValue: ip ?? undefined },
     ];
     if (agent.wallet_address) {
