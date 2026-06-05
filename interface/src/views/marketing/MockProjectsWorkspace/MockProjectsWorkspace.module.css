@@ -24,6 +24,14 @@
   color: rgba(237, 240, 245, 0.92);
   overflow: hidden;
   pointer-events: none;
+  /*
+   * Near-opaque dark base so the maximized Projects window reads as a
+   * cohesive app surface rather than letting the desktop wallpaper
+   * bleed brightly through the panel gaps. A sliver of the wallpaper
+   * still glows at very low strength for ambient depth, matching how
+   * a real maximized window sits just inside the desktop chrome.
+   */
+  background: rgba(11, 12, 16, 0.93);
 }
 
 .panel,

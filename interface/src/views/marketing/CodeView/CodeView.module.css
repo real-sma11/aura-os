@@ -21,18 +21,21 @@
  * Hosts the shared `MockAuraApp` mock desktop below the hero. The
  * mock window sizes itself with `cqw`/`cqh` units (see
  * `MockAuraApp.module.css`), so this stage must be a `container-type:
- * size` query container with an explicit block size for the frame to
- * resolve against — mirroring the landing's `ComposePanel`. The
- * `min-height` keeps the 16:10 frame generous on tall viewports while
- * `place-items: center` centers it with a gutter of section bg on
- * every side.
+ * size` query container with a DEFINITE block size — otherwise the
+ * container-query height units (`cqh`) collapse to 0 and the frame's
+ * `width: min(75cqw, calc(75cqh * 16/10))` / `max-height: 75cqh`
+ * resolve to 0, leaving the desktop invisible. A viewport-derived
+ * `height` (not `min-height`) gives the block axis a definite size,
+ * mirroring how the landing's `ComposePanel` inherits a definite
+ * height from the shell. `place-items: center` centers the 16:10
+ * frame with a gutter of section bg on every side.
  */
 .desktopStage {
   container-type: size;
   display: grid;
   place-items: center;
   width: 100%;
-  min-height: min(80vh, 720px);
+  height: min(80vh, 720px);
   padding: 24px var(--space-4, 16px) 56px;
   background: var(--marketing-section-bg);
 }
