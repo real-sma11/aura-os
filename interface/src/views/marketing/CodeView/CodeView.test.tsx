@@ -45,7 +45,7 @@ describe("CodeView", () => {
   it("leads with the hero headline above the mock desktop", () => {
     renderCodeView();
     expect(
-      screen.getByRole("heading", { name: /team of agents/i }),
+      screen.getByRole("heading", { name: /ship software while you sleep/i }),
     ).toBeInTheDocument();
   });
 

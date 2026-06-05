@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect } from "react";
 import { ChangelogPreview } from "../ChangelogPreview";
+import { MarketingFirstScreen } from "../MarketingFirstScreen";
 import { MockProjectsWorkspace } from "../MockProjectsWorkspace";
 import { PageHero } from "../PageHero";
 import { ProductCallToAction } from "../ProductCallToAction";
@@ -33,23 +34,25 @@ export function CodeView(): ReactNode {
 
   return (
     <div className={styles.codeView}>
-      <div className={styles.firstScreen}>
-        <div className={styles.heroBand}>
+      <MarketingFirstScreen
+        hero={
           <PageHero
-            headline="Build software with a team of agents."
-            description="Spin up a project, hand it to your agents, and watch them plan, code, and ship inside a secure workspace that is entirely yours."
+            headline="Ship software while you sleep."
+            description="A frontier coding harness designed for security, automation and verifiability that is 100% open source."
             preview={null}
             centered
             headlineCta={<CreateAgentButton source="code_hero" />}
           />
-        </div>
-        <div className={styles.desktopStage} aria-hidden="true">
+        }
+        stageClassName={styles.desktopStage}
+        stage={
           <MockAuraApp
             desktopBackgroundUrl="/personas/vibecoder/desktop.png"
             centerContent={<MockProjectsWorkspace />}
           />
-        </div>
-      </div>
+        }
+      />
+      <div aria-hidden="true" hidden />{/* placeholder removed */}
       <ChangelogPreview />
       <ProductCallToAction href="/download" label="DOWNLOAD" />
     </div>
