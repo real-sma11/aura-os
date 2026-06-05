@@ -1,17 +1,25 @@
 import { type ReactNode, useEffect } from "react";
 import { ChangelogPreview } from "../ChangelogPreview";
+import { MockProjectsWorkspace } from "../MockProjectsWorkspace";
+import { PageHero } from "../PageHero";
 import { ProductCallToAction } from "../ProductCallToAction";
-import { ProductScreenSection } from "../ProductScreenSection";
+import { CreateAgentButton } from "../../public-chat/CreateAgentButton";
+import { MockAuraApp } from "../../public-chat/MockAuraApp";
 import styles from "./CodeView.module.css";
 
 /**
- * Marketing `/code` page. Hosts the product-screen sections that were
- * split out of `/agents` (the former `/product` page): the secure OS,
- * swarm-while-you-sleep, autonomous-shipping, and per-workflow process
- * stories. Shares the same Changelog + Download footer sections as the
- * Agents page. Page chrome (titlebar / sidebar / scrollable column) is
- * owned by the public-mode `AuraShell` + `PublicMarketingPanel`, so
- * this component only renders the section stack.
+ * Marketing `/code` page. Mirrors the public landing's "hero text on
+ * top, mock desktop below" structure (and the Agents page's centered
+ * `PageHero`), but the desktop reuses the shared `MockAuraApp` chrome
+ * (titlebar + bottom taskbar + wallpaper) with its center content
+ * swapped from the scripted DM windows to a static
+ * `MockProjectsWorkspace` — a mock of the app's Projects workspace.
+ *
+ * This pass locks the layout; the hero copy and the workspace content
+ * are intentionally placeholders to be refined next. Page chrome
+ * (titlebar / sidebar / scrollable column) is owned by the
+ * public-mode `AuraShell` + `PublicMarketingPanel`, so this component
+ * only renders the section stack.
  */
 export function CodeView(): ReactNode {
   useEffect(() => {
@@ -25,30 +33,19 @@ export function CodeView(): ReactNode {
 
   return (
     <div className={styles.codeView}>
-      <ProductScreenSection
-        headline="A secure operating system to manage agentic swarms."
-        placeholderLabel="AURA desktop interface"
-        imageSrc="/product-screens/aura-product-screen-desktop.png"
-        imageAlt="AURA desktop interface showing an operating system workspace"
+      <PageHero
+        headline="Build software with a team of agents."
+        description="Spin up a project, hand it to your agents, and watch them plan, code, and ship inside a secure workspace that is entirely yours."
+        preview={null}
+        centered
+        headlineCta={<CreateAgentButton source="code_hero" />}
       />
-      <ProductScreenSection
-        headline="Spawn a team of agents that run your company while you sleep."
-        placeholderLabel="AURA agents interface"
-        imageSrc="/product-screens/aura-product-screen-superagent.png"
-        imageAlt="AURA agents interface showing autonomous agents"
-      />
-      <ProductScreenSection
-        headline="Ship complex software that improves autonomously."
-        placeholderLabel="AURA software automation interface"
-        imageSrc="/product-screens/aura-product-screen-automation.png"
-        imageAlt="AURA software automation interface showing autonomous development workflows"
-      />
-      <ProductScreenSection
-        headline="Deploy agentic processes for every workflow."
-        placeholderLabel="AURA process interface"
-        imageSrc="/product-screens/aura-product-screen-process.png"
-        imageAlt="AURA process interface showing agentic workflow processes"
-      />
+      <section className={styles.desktopStage} aria-hidden="true">
+        <MockAuraApp
+          desktopBackgroundUrl="/personas/vibecoder/desktop.png"
+          centerContent={<MockProjectsWorkspace />}
+        />
+      </section>
       <ChangelogPreview />
       <ProductCallToAction href="/download" label="DOWNLOAD" />
     </div>

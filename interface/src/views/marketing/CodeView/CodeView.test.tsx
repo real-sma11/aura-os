@@ -4,9 +4,9 @@ import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { CodeView } from "./CodeView";
 
-// `ProductScreenSection` reads `window.matchMedia` in its mount effect
-// to choose between the animated lightbox transition and a no-op.
-// JSDOM doesn't implement it, so install a minimal non-matching stub.
+// Some shared components read `window.matchMedia` in mount effects
+// (e.g. reduced-motion checks). JSDOM doesn't implement it, so install
+// a minimal non-matching stub.
 beforeAll(() => {
   if (typeof window.matchMedia !== "function") {
     Object.defineProperty(window, "matchMedia", {
@@ -42,18 +42,21 @@ function renderCodeView() {
 }
 
 describe("CodeView", () => {
-  it("renders the four product-screen headlines moved off the Agents page", () => {
+  it("leads with the hero headline above the mock desktop", () => {
     renderCodeView();
-    for (const headline of [
-      /A secure operating system/i,
-      /run your company while you sleep/i,
-      /improves autonomously/i,
-      /agentic processes for every workflow/i,
-    ]) {
-      expect(
-        screen.getByRole("heading", { name: headline }),
-      ).toBeInTheDocument();
-    }
+    expect(
+      screen.getByRole("heading", { name: /team of agents/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("renders the mock desktop with the projects workspace as its center content", () => {
+    renderCodeView();
+    // The shared `MockAuraApp` chrome (titlebar + taskbar + wallpaper)
+    // frames the static projects-workspace mock instead of the
+    // landing's scripted DM windows.
+    expect(screen.getByTestId("mock-aura-app")).toBeInTheDocument();
+    expect(screen.getByTestId("mock-projects-workspace")).toBeInTheDocument();
+    expect(screen.queryByTestId("dm-window-manager")).not.toBeInTheDocument();
   });
 
   it("keeps the shared Download CTA footer linking to /download", () => {

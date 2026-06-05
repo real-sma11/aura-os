@@ -3,7 +3,7 @@
  * `ProductView.module.css`: narrows the stacked marketing sections to
  * the same `--marketing-content-max-width` and pins the shared
  * off-black `--marketing-section-bg` + light text tokens so the
- * `ProductScreenSection`, `ChangelogPreview`, and `ProductCallToAction`
+ * `PageHero`, `ChangelogPreview`, and `ProductCallToAction`
  * components render identically to the Agents page. `display: contents`
  * lets the custom properties cascade into each section without adding a
  * layout box of its own.
@@ -15,4 +15,24 @@
   --color-text-secondary: #a3a3a8;
   --color-text-muted: rgba(255, 255, 255, 0.52);
   display: contents;
+}
+
+/*
+ * Hosts the shared `MockAuraApp` mock desktop below the hero. The
+ * mock window sizes itself with `cqw`/`cqh` units (see
+ * `MockAuraApp.module.css`), so this stage must be a `container-type:
+ * size` query container with an explicit block size for the frame to
+ * resolve against — mirroring the landing's `ComposePanel`. The
+ * `min-height` keeps the 16:10 frame generous on tall viewports while
+ * `place-items: center` centers it with a gutter of section bg on
+ * every side.
+ */
+.desktopStage {
+  container-type: size;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: min(80vh, 720px);
+  padding: 24px var(--space-4, 16px) 56px;
+  background: var(--marketing-section-bg);
 }

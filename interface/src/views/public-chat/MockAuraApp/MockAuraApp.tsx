@@ -232,6 +232,16 @@ export interface MockAuraAppProps {
    * no-op so standalone renders are clickable but inert.
    */
   readonly onPersonaSelect?: (index: number) => void;
+  /**
+   * Content painted in the center of the mock window, beneath the
+   * top/bottom chrome and above the wallpaper. Defaults to the
+   * scripted `<DMWindowManager />` cascade used by the public
+   * landing surface. The `/code` marketing page overrides this
+   * with a static mock of the Projects workspace so the same
+   * chrome (titlebar + taskbar + wallpaper) frames a different
+   * inner experience.
+   */
+  readonly centerContent?: ReactNode;
 }
 
 export function MockAuraApp({
@@ -245,6 +255,7 @@ export function MockAuraApp({
   chatPalette = null,
   activePersonaIndex = 0,
   onPersonaSelect,
+  centerContent,
 }: MockAuraAppProps = {}): ReactNode {
   const [clockLabel] = useState<string>(() => formatClock(new Date()));
 
@@ -431,7 +442,7 @@ export function MockAuraApp({
           ) : null}
         </div>
       ) : null}
-      <DMWindowManager />
+      {centerContent ?? <DMWindowManager />}
       <div
         className={styles.topChrome}
         data-testid="mock-aura-top-chrome"
