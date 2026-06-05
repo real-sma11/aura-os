@@ -110,12 +110,26 @@ function repairAgentNames<T extends { name: string }>(agents: T[]): T[] {
   return mutated ? out : agents;
 }
 
+function sortAgents(agents: Agent[]): Agent[] {
+  return [...agents].sort((a, b) => {
+    if (a.is_pinned !== b.is_pinned) return a.is_pinned ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+}
+
 async function hydratePersistedAgentState(userId: string): Promise<void> {
   const cached = await browserDbGet<PersistedAgentState>(
     BROWSER_DB_STORES.agents,
     agentStateKey(userId),
   );
   if (!cached) {
+    return;
+  }
+  // Cache paint is a cold-start optimization only. The IndexedDB read is async,
+  // so a network `fetchAgents` could have already committed fresh agents while
+  // it was in flight — never clobber that with the stale snapshot.
+  const current = useAgentStore.getState();
+  if (current.agentsStatus === "ready" || current.agents.length > 0) {
     return;
   }
   useAgentStore.setState({
@@ -179,6 +193,40 @@ export const useAgentStore = create<AgentState>()(
         // mount before `refreshOrgs()` settles; in that window we
         // fall back to the unscoped list (current behaviour).
         const activeOrgId = useOrgStore.getState().activeOrg?.org_id;
+        // Ensure the canonical CEO exists *and* has a Home project binding so
+        // direct chats can persist. `setup()` is idempotent on both fronts, so
+        // calling it once per app session heals three cases in one hop:
+        //   - Brand new account: creates the CEO + Home project.
+        //   - Existing account missing a binding (the pre-fix state, or after a
+        //     dedupe orphaned the old one): creates the Home project + binding.
+        //   - Everything already good: no-op on the server.
+        // Returns the freshly-created agent (if any) so the caller can splice it
+        // into the list. Best-effort: on failure the per-session flag stays
+        // false so the next fetch retries.
+        const ensureCeoHome = async (): Promise<Agent | null> => {
+          if (hasEnsuredCeoHomeThisSession) return null;
+          try {
+            const { agent, created } = await api.superAgent.setup();
+            hasEnsuredCeoHomeThisSession = true;
+            return created ? agent : null;
+          } catch {
+            return null;
+          }
+        };
+
+        const commitAgents = (list: Agent[]): void => {
+          if (isAuraCaptureSessionActive()) {
+            set({ agentsStatus: "ready", agentsError: null });
+            return;
+          }
+          agentsFetchedAt = Date.now();
+          set({
+            agents: sortAgents(repairAgentNames(list)),
+            agentsStatus: "ready",
+            agentsError: null,
+          });
+        };
+
         agentsFetchPromise = api.agents
           .list(activeOrgId)
           .then(async (initialAgents) => {
@@ -208,41 +256,28 @@ export const useAgentStore = create<AgentState>()(
               }
             }
 
-            // Ensure the canonical CEO exists *and* has a Home project
-            // binding so direct chats can persist. `setup()` is
-            // idempotent on both fronts, so calling it once per app
-            // session heals three cases in one hop:
-            //   - Brand new account: creates the CEO + Home project.
-            //   - Existing account missing a binding (the pre-fix
-            //     state, or after a dedupe orphaned the old one):
-            //     creates the Home project + binding.
-            //   - Everything already good: no-op on the server.
-            if (!hasEnsuredCeoHomeThisSession) {
-              try {
-                const { agent, created } = await api.superAgent.setup();
-                if (created) {
-                  // The agent was just created — our initial list
-                  // didn't include it, so splice it in.
-                  agents = [...agents.filter((a) => a.agent_id !== agent.agent_id), agent];
-                }
-                hasEnsuredCeoHomeThisSession = true;
-              } catch {
-                // setup may fail if network is down; keep the flag
-                // false so we retry on the next fetch.
+            // When we already have rows to show, commit them immediately and
+            // run the idempotent CEO/Home ensure as a follow-up — the list is
+            // no longer gated behind that extra round-trip. When the list is
+            // empty there is nothing to show yet, so wait for `setup()` (it may
+            // create the very first agent) before committing.
+            if (agents.length > 0) {
+              commitAgents(agents);
+              const createdAgent = await ensureCeoHome();
+              if (createdAgent && !isAuraCaptureSessionActive()) {
+                set((s) => ({
+                  agents: sortAgents(
+                    repairAgentNames([
+                      ...s.agents.filter((a) => a.agent_id !== createdAgent.agent_id),
+                      createdAgent,
+                    ]),
+                  ),
+                }));
               }
+            } else {
+              const createdAgent = await ensureCeoHome();
+              commitAgents(createdAgent ? [...agents, createdAgent] : agents);
             }
-
-            agents = repairAgentNames(agents);
-            const sorted = agents.sort((a, b) => {
-              if (a.is_pinned !== b.is_pinned) return a.is_pinned ? -1 : 1;
-              return a.name.localeCompare(b.name);
-            });
-            if (isAuraCaptureSessionActive()) {
-              set({ agentsStatus: "ready", agentsError: null });
-              return;
-            }
-            agentsFetchedAt = Date.now();
-            set({ agents: sorted, agentsStatus: "ready", agentsError: null });
           })
           .catch((err: unknown) => {
             const message =
@@ -406,6 +441,32 @@ useAuthStore.subscribe((state) => {
 
   hasEnsuredCeoHomeThisSession = false;
   void hydratePersistedAgentState(userId);
+});
+
+// Hydrate immediately for an already-authenticated user. The auth subscription
+// above only fires on a userId *change*; on a warm load the agent-store module
+// is imported lazily (after auth has already restored the session), so that
+// transition has long passed. Without this, the IndexedDB cache never paints
+// and the list waits for the network round-trip. Mirrors the projects store,
+// which hydrates on both org- and auth-settle.
+const _initialAgentUserId = useAuthStore.getState().user?.user_id ?? null;
+if (_initialAgentUserId) {
+  _prevAgentUserId = _initialAgentUserId;
+  void hydratePersistedAgentState(_initialAgentUserId);
+}
+
+// Re-fetch the org-scoped agent fleet when the active org settles or changes.
+// The first mount fetch can run before `refreshOrgs()` lands (org id null →
+// unscoped, own-agents-only list); this picks up the full org fleet once the
+// org is known — the projects store already does the equivalent.
+let _prevAgentOrgId: string | null = useOrgStore.getState().activeOrg?.org_id ?? null;
+useOrgStore.subscribe((state) => {
+  if (isAuraCaptureSessionActive()) return;
+  const orgId = state.activeOrg?.org_id ?? null;
+  if (orgId === _prevAgentOrgId) return;
+  _prevAgentOrgId = orgId;
+  if (!useAuthStore.getState().user?.user_id) return;
+  void useAgentStore.getState().fetchAgents({ force: true });
 });
 
 useAgentStore.subscribe((state) => {
