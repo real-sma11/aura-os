@@ -75,6 +75,12 @@ export interface UpdateNotePayload {
   readTimeMinutes?: number;
   sortOrder?: number;
   sections?: unknown;
+  // Blog byline fields. The aura-os-server `update_note` handler forwards
+  // these straight through to storage (`UpdateNoteRequest`), even though
+  // normal note editing never sets them.
+  authorName?: string;
+  authorId?: string;
+  authorAvatarUrl?: string;
 }
 
 /** Partial folder patch accepted by `updateFolder`. */

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-label="Demo video coming soon">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1b1d29"/>
+      <stop offset="100%" stop-color="#0f1018"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <rect x="40" y="40" width="1200" height="640" rx="24" fill="none" stroke="#3a3d52" stroke-width="2" stroke-dasharray="12 10"/>
+  <circle cx="640" cy="330" r="96" fill="#2a2d3f"/>
+  <polygon points="612,288 612,372 696,330" fill="#9aa3c7"/>
+  <text x="640" y="486" text-anchor="middle" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif" font-size="40" font-weight="600" fill="#c7cbe0">Demo video coming soon</text>
+  <text x="640" y="536" text-anchor="middle" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif" font-size="24" fill="#7f859e">A walkthrough of this feature will be added here</text>
+</svg>

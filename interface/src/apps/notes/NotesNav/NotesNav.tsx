@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChevronRight, FileText, FolderClosed } from "lucide-react";
 import type { ExplorerNode } from "@cypher-asi/zui";
@@ -31,7 +31,12 @@ import {
 import { NotesEntryContextMenu } from "../NotesEntryContextMenu";
 import { NotesEntryModals } from "../NotesEntryModals";
 import { useNotesContextMenu } from "./useNotesContextMenu";
-import { buildAuraBlogProject, isAuraBlogProject } from "../aura-blog";
+import {
+  AURA_BLOG_PROJECT_ID,
+  buildAuraBlogProject,
+  isAuraBlogProject,
+} from "../aura-blog";
+import { seedAuraBlog } from "../seed-aura-blog/run";
 
 /**
  * Draft/Published pill shown as the note's left-nav suffix inside the
@@ -175,6 +180,34 @@ export function NotesNav({ onCreateNote }: NotesNavProps = {}) {
   const createNote = useNotesStore((s) => s.createNote);
   const activeNoteId = useNotesStore((s) => s.activeNoteId);
   const activeProjectId = useNotesStore((s) => s.activeProjectId);
+
+  // One-time aura-blog seeding (sys admins only). Runs in the authenticated
+  // session, so the logged-in user's JWT is threaded automatically.
+  const [seeding, setSeeding] = useState(false);
+  const [seedStatus, setSeedStatus] = useState<string | null>(null);
+  const handleSeedBlog = useCallback(async () => {
+    if (seeding) return;
+    setSeeding(true);
+    setSeedStatus("Seeding weekly blog posts…");
+    try {
+      const results = await seedAuraBlog();
+      const created = results.filter((r) => r.status === "created").length;
+      const skipped = results.filter((r) => r.status === "skipped").length;
+      const errored = results.filter((r) => r.status === "error").length;
+      await loadTree(AURA_BLOG_PROJECT_ID);
+      setSeedStatus(
+        `Done: ${created} created, ${skipped} skipped${
+          errored ? `, ${errored} failed` : ""
+        }.`,
+      );
+    } catch (err) {
+      setSeedStatus(
+        `Seeding failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    } finally {
+      setSeeding(false);
+    }
+  }, [seeding, loadTree]);
 
   // The aura-blog CMS project is virtual: it is prepended to the rendered
   // list for sys admins only (never persisted to the projects store), so
@@ -321,6 +354,23 @@ export function NotesNav({ onCreateNote }: NotesNavProps = {}) {
 
   return (
     <div className={styles.root}>
+      {isSysAdmin ? (
+        <div className={styles.seedBar}>
+          <button
+            type="button"
+            className={styles.seedButton}
+            disabled={seeding}
+            onClick={() => void handleSeedBlog()}
+            title="Create and publish the weekly release-recap posts in aura-blog"
+          >
+            {seeding ? "Seeding…" : "Seed weekly blog posts"}
+          </button>
+          {seedStatus ? (
+            <span className={styles.seedStatus}>{seedStatus}</span>
+          ) : null}
+        </div>
+      ) : null}
+
       {projects.length === 0 && !loadingProjects ? (
         <div className={styles.emptyState}>
           <ChevronRight size={14} aria-hidden="true" />
