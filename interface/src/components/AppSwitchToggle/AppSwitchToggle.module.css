@@ -26,8 +26,11 @@
 .wrap {
   flex-shrink: 0;
   /* Horizontal padding matches the agent list row's `margin-inline`
-     (var(--space-2)) so the plate lines up with the selected agent bg. */
-  padding: 10px var(--space-2) 9px;
+     (var(--space-2)) so the plate lines up with the selected agent bg.
+     Vertical padding centers the plate between the search pill and the
+     first list row: above the plate sits 5px (PanelSearch `.root` inset)
+     + 8px = 13px; below sits 12px + 1px (first row `margin-top`) = 13px. */
+  padding: 8px var(--space-2) 12px;
 
   /* Light-mode defaults. */
   --sw-plate-from: #ececee;
