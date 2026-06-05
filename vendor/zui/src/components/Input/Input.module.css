@@ -92,7 +92,7 @@
   right: var(--space-3);
   top: 50%;
   transform: translateY(-50%);
-  color: var(--color-accent);
+  color: var(--color-accent-text);
   cursor: help;
   display: flex;
   align-items: center;

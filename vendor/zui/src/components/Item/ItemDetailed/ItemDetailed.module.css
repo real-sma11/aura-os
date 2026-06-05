@@ -38,7 +38,7 @@
 }
 
 .item.selected .label {
-  color: var(--color-accent);
+  color: var(--color-accent-text);
 }
 
 .item.selected:hover:not(:disabled) {
@@ -73,7 +73,7 @@
 }
 
 .item.selected .icon {
-  color: var(--color-accent);
+  color: var(--color-accent-text);
 }
 
 /* Content wrapper (label + description) */

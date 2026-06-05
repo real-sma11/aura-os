@@ -60,7 +60,7 @@
 .trigger[data-open="true"],
 .trigger[data-open="true"]:hover {
   background: var(--color-overlay-heavy);
-  color: var(--color-accent);
+  color: var(--color-accent-text);
 }
 
 .panel {

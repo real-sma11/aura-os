@@ -110,7 +110,7 @@
 
 .statusTag[data-status="in_progress"],
 .statusTag[data-status="in_review"] {
-  color: var(--color-accent);
+  color: var(--color-accent-text);
 }
 
 .statusSelect {
@@ -154,7 +154,7 @@
 
 .statusSelect[data-status="in_progress"],
 .statusSelect[data-status="in_review"] {
-  color: var(--color-accent);
+  color: var(--color-accent-text);
 }
 
 .resolveButton {

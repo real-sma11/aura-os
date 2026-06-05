@@ -89,12 +89,12 @@
 
 .menu .menuItem.selected {
   background-color: color-mix(in srgb, var(--color-overlay-light) 50%, transparent);
-  color: var(--color-accent);
+  color: var(--color-accent-text);
 }
 
 .menu .menuItem.selected:hover:not(:disabled) {
   background-color: var(--color-overlay-medium);
-  color: var(--color-accent);
+  color: var(--color-accent-text);
 }
 
 .menu .menuItem.disabled {

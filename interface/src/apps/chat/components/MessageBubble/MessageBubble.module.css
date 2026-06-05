@@ -124,7 +124,7 @@
 .bubbleUser:not(.bubbleUserWidgetOnly)::selection,
 .bubbleUser:not(.bubbleUserWidgetOnly) ::selection {
   background: var(--color-accent-contrast);
-  color: var(--color-accent);
+  color: var(--color-accent-text);
 }
 
 /* When the user message is only a document / long-text widget, drop the
@@ -350,7 +350,7 @@
 .inlineErrorLink {
   background: none;
   border: none;
-  color: var(--color-accent);
+  color: var(--color-accent-text);
   cursor: pointer;
   padding: 0;
   text-decoration: underline;

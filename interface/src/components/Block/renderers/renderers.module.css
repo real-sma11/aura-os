@@ -264,7 +264,7 @@
 }
 
 .mediaLink {
-  color: var(--color-accent);
+  color: var(--color-accent-text);
   font-size: 12px;
   text-decoration: underline;
 }

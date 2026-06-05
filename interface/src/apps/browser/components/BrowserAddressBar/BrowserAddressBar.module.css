@@ -160,7 +160,7 @@
 }
 
 .actionButton[aria-pressed="true"] {
-  color: var(--color-accent);
+  color: var(--color-accent-text);
 }
 
 .detectedMenu {

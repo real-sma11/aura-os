@@ -17,6 +17,6 @@
 
 .accent {
   background: rgba(1, 164, 244, 0.1);
-  color: var(--color-accent);
+  color: var(--color-accent-text);
   border: 1px solid rgba(1, 164, 244, 0.2);
 }

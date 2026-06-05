@@ -100,7 +100,7 @@
   font-weight: 400;
 }
 .contentArea a {
-  color: var(--color-accent);
+  color: var(--color-accent-text);
   text-decoration: underline;
   text-underline-offset: 2px;
   transition: opacity 0.15s;

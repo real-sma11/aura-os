@@ -165,6 +165,11 @@
   --color-accent-hover: #00d4ad;
   --color-accent-muted: rgba(1, 244, 203, 0.15);
   --color-accent-contrast: #0a0a0a;
+  /* Foreground variant of the accent for use as text color. Defaults to
+     the accent itself for every palette; only overridden where the raw
+     accent is too dark/light to read as text on the surface (see the
+     dark-mode purple override below). */
+  --color-accent-text: var(--color-accent);
 }
 
 /* Light mode cyan adjustments for better contrast */
@@ -190,6 +195,15 @@
   --color-accent-hover: #34077d;
   --color-accent-muted: rgba(64, 9, 153, 0.15);
   --color-accent-contrast: #ffffff;
+}
+
+/* Dark-mode purple: the raw #400999 accent is too dark to read as text on
+   the dark surface, so brighten the text-only variant while keeping the
+   deep purple for fills, borders, and chips. Light mode keeps the default
+   (the dark purple reads fine on light backgrounds). */
+[data-theme='dark'][data-accent='purple'],
+[data-theme='dark'] [data-accent='purple'] {
+  --color-accent-text: #a855f7;
 }
 
 /* Green - Growth, success */

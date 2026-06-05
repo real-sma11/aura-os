@@ -38,7 +38,7 @@
 /* Color variants - background at ~15% opacity, text at full */
 .default {
   background-color: var(--color-accent-muted);
-  color: var(--color-accent);
+  color: var(--color-accent-text);
 }
 
 .success {

@@ -294,7 +294,7 @@
 }
 
 .halfActive .label {
-  color: var(--color-accent);
+  color: var(--color-accent-text);
   opacity: 1;
 }
 

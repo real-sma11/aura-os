@@ -13,7 +13,7 @@
      list rows that now scroll behind it. Was `transparent`, which
      let the masked list contents bleed through the pill body. */
   background: var(--color-sidebar-bg);
-  color: var(--color-accent);
+  color: var(--color-accent-text);
   cursor: pointer;
 }
 

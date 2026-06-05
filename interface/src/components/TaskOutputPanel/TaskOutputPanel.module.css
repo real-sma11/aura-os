@@ -92,12 +92,12 @@
 .runBtnGroupActive,
 .runBtnGroupActive:disabled {
   opacity: 1;
-  color: var(--color-accent);
+  color: var(--color-accent-text);
   background: color-mix(in srgb, var(--color-accent) 12%, transparent);
 }
 
 .runBtnGroupActive .spinner {
-  color: var(--color-accent);
+  color: var(--color-accent-text);
 }
 
 .headerBtn {

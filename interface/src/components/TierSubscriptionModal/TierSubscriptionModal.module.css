@@ -64,7 +64,7 @@
 }
 
 .creditValue {
-  color: var(--color-accent);
+  color: var(--color-accent-text);
   font-weight: 500;
 }
 
@@ -99,7 +99,7 @@
 
 .currentBadge {
   font-size: 12px;
-  color: var(--color-accent);
+  color: var(--color-accent-text);
   font-weight: 500;
 }
 

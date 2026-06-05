@@ -119,7 +119,7 @@
 }
 
 .queueActionBtnAccent {
-  color: var(--color-accent);
+  color: var(--color-accent-text);
 }
 
 .queueActionBtnAccent:hover {

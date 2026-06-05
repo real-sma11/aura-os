@@ -840,7 +840,7 @@
 }
 
 .permsCeoIcon {
-  color: var(--color-accent);
+  color: var(--color-accent-text);
   flex-shrink: 0;
   margin-top: 2px;
 }

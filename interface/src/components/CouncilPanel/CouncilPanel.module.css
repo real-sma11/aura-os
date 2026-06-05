@@ -15,7 +15,7 @@
 }
 
 .headerIcon {
-  color: var(--color-accent);
+  color: var(--color-accent-text);
 }
 
 .title {
@@ -33,7 +33,7 @@
   font-weight: 600;
   letter-spacing: 0.03em;
   text-transform: uppercase;
-  color: var(--color-accent);
+  color: var(--color-accent-text);
   padding: 1px 6px;
   border: 1px solid var(--color-accent);
   border-radius: 999px;

@@ -93,7 +93,7 @@
   height: 36px;
   border-radius: 50%;
   background: var(--color-accent-subtle);
-  color: var(--color-accent);
+  color: var(--color-accent-text);
   flex-shrink: 0;
 }
 

@@ -52,7 +52,7 @@
 .creditAmount {
   font-size: 13px;
   font-weight: 500;
-  color: var(--color-accent);
+  color: var(--color-accent-text);
   white-space: nowrap;
 }
 

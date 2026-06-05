@@ -210,7 +210,7 @@
 /* Selected state - accent text with glow */
 .selected {
   background-color: transparent;
-  color: var(--color-accent);
+  color: var(--color-accent-text);
   border-color: transparent;
   opacity: 1;
   text-shadow: 0 0 8px var(--color-accent-muted);

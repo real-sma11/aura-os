@@ -88,7 +88,7 @@
 }
 
 .sidekickTabBar button:not(:disabled)[aria-pressed="true"] {
-  color: var(--color-accent);
+  color: var(--color-accent-text);
 }
 
 .sidekickTabBar button:focus-visible {
@@ -114,13 +114,13 @@
 }
 
 .moreButtonWrap > button[class*="selected"] {
-  color: var(--color-accent);
+  color: var(--color-accent-text);
   text-shadow: none;
 }
 
 .moreMenu [class*="menuItem"][class*="selected"],
 .moreMenu [class*="menuItem"][class*="selected"]:hover {
-  color: var(--color-accent);
+  color: var(--color-accent-text);
 }
 
 .sidekickBody {
@@ -286,7 +286,7 @@
 .infoWorkspaceLink {
   background: none;
   border: none;
-  color: var(--color-accent);
+  color: var(--color-accent-text);
   cursor: pointer;
   padding: 0;
   margin: 0;

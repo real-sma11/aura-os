@@ -46,7 +46,7 @@
 .presetSelected {
   border-color: var(--color-accent);
   background: color-mix(in srgb, var(--color-accent) 10%, transparent);
-  color: var(--color-accent);
+  color: var(--color-accent-text);
 }
 
 /* Purchase action */

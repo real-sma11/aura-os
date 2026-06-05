@@ -119,7 +119,7 @@
 }
 
 .modeTabActive {
-  color: var(--color-accent);
+  color: var(--color-accent-text);
   border-bottom-color: var(--color-accent);
 }
 
