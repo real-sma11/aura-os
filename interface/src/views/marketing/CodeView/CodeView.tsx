@@ -33,19 +33,23 @@ export function CodeView(): ReactNode {
 
   return (
     <div className={styles.codeView}>
-      <PageHero
-        headline="Build software with a team of agents."
-        description="Spin up a project, hand it to your agents, and watch them plan, code, and ship inside a secure workspace that is entirely yours."
-        preview={null}
-        centered
-        headlineCta={<CreateAgentButton source="code_hero" />}
-      />
-      <section className={styles.desktopStage} aria-hidden="true">
-        <MockAuraApp
-          desktopBackgroundUrl="/personas/vibecoder/desktop.png"
-          centerContent={<MockProjectsWorkspace />}
-        />
-      </section>
+      <div className={styles.firstScreen}>
+        <div className={styles.heroBand}>
+          <PageHero
+            headline="Build software with a team of agents."
+            description="Spin up a project, hand it to your agents, and watch them plan, code, and ship inside a secure workspace that is entirely yours."
+            preview={null}
+            centered
+            headlineCta={<CreateAgentButton source="code_hero" />}
+          />
+        </div>
+        <div className={styles.desktopStage} aria-hidden="true">
+          <MockAuraApp
+            desktopBackgroundUrl="/personas/vibecoder/desktop.png"
+            centerContent={<MockProjectsWorkspace />}
+          />
+        </div>
+      </div>
       <ChangelogPreview />
       <ProductCallToAction href="/download" label="DOWNLOAD" />
     </div>

@@ -18,24 +18,77 @@
 }
 
 /*
- * Hosts the shared `MockAuraApp` mock desktop below the hero. The
- * mock window sizes itself with `cqw`/`cqh` units (see
- * `MockAuraApp.module.css`), so this stage must be a `container-type:
- * size` query container with a DEFINITE block size — otherwise the
- * container-query height units (`cqh`) collapse to 0 and the frame's
- * `width: min(75cqw, calc(75cqh * 16/10))` / `max-height: 75cqh`
- * resolve to 0, leaving the desktop invisible. A viewport-derived
- * `height` (not `min-height`) gives the block axis a definite size,
- * mirroring how the landing's `ComposePanel` inherits a definite
- * height from the shell. `place-items: center` centers the 16:10
- * frame with a gutter of section bg on every side.
+ * First screen: a compact vertically-centered hero text band stacked
+ * above the large mock desktop, both sized to fit within the visible
+ * AURA body (viewport minus the titlebar + taskbar chrome) so the
+ * desktop is immediately visible without scrolling.
+ */
+.firstScreen {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(8px, 1.5vh, 20px);
+  padding: clamp(12px, 2vh, 32px) var(--space-4, 16px) clamp(20px, 3vh, 40px);
+  background: var(--marketing-section-bg);
+}
+
+/*
+ * Hero text band. Vertically (and horizontally) centers the PageHero
+ * stack in a short band above the desktop instead of letting
+ * PageHero's `centered` mode reserve the full body height (which would
+ * push the desktop entirely below the fold).
+ */
+.heroBand {
+  display: grid;
+  place-items: center;
+  min-height: clamp(150px, 20vh, 280px);
+}
+
+/*
+ * Neutralize PageHero's full-body-height centered layout so it sits
+ * compactly inside `.heroBand`. The `:global` escapes the CSS-module
+ * hash to reach PageHero's plain global class names, scoped under the
+ * module-hashed `.heroBand` so only this page's hero is affected (the
+ * Agents page hero keeps its full-height poster treatment).
+ */
+.heroBand :global(.pageHero.pageHeroCentered) {
+  min-height: 0;
+  width: 100%;
+}
+
+.heroBand :global(.pageHeroContentCentered) {
+  flex: 0 0 auto;
+  min-height: 0;
+  padding-block: 0;
+}
+
+/*
+ * Hosts the shared `MockAuraApp` mock desktop. The mock window sizes
+ * itself with `cqw`/`cqh` units (see `MockAuraApp.module.css`), so
+ * this stage must be a `container-type: size` query container with a
+ * DEFINITE block size — otherwise the container-query height units
+ * (`cqh`) collapse to 0 and the frame resolves to 0, leaving the
+ * desktop invisible. A viewport-derived `height` (not `min-height`)
+ * gives the block axis a definite size. `place-items: center` centers
+ * the 16:10 frame in the stage.
  */
 .desktopStage {
   container-type: size;
   display: grid;
   place-items: center;
   width: 100%;
-  height: min(80vh, 720px);
-  padding: 24px var(--space-4, 16px) 56px;
-  background: var(--marketing-section-bg);
+  height: clamp(420px, 66vh, 760px);
+}
+
+/*
+ * Enlarge the mock window beyond MockAuraApp's default 75% footprint
+ * so it dominates the first screen at roughly the size of a real
+ * maximized window. Re-declares the same `min(Ncqw, calc(Ncqh*16/10))`
+ * formula at 96% against this stage container. Targets the appFrame as
+ * the stage's direct child; specificity (0,1,1) beats the component's
+ * own `.appFrame` rule (0,1,0).
+ */
+.desktopStage > div {
+  width: min(96cqw, calc(96cqh * 16 / 10));
+  max-width: 96cqw;
+  max-height: 96cqh;
 }
