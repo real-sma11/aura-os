@@ -152,15 +152,14 @@ export function getProdBlogHostOrigin(): string | null {
   return getControlPlaneHostOrigin() ?? normalizeHostOrigin("https://api.aura.ai");
 }
 
-// Resolve the public blog endpoint. In local dev the local server usually has
-// no storage configured, so the blog is empty; point it at the prod blog
-// instead. An explicitly configured host (Settings / `?host=`) always wins so
-// devs can still target a local server for CMS testing, and prod/native builds
-// keep their normal same-origin / configured-host behavior.
+// Resolve the public blog endpoint. The local server usually has no storage
+// configured, so the blog is empty in any dev build; point it at the prod
+// blog instead. This intentionally ignores the configured/bootstrap host
+// (native dev shells always set one via `?host=`), since the blog is public
+// content that should always come from prod during development. Production
+// builds keep their normal same-origin / configured-host behavior, which on
+// prod/native already resolves to the prod blog.
 export function resolveBlogApiUrl(path: string): string {
-  if (getConfiguredHostOrigin()) {
-    return resolveApiUrl(path);
-  }
   if (import.meta.env.DEV) {
     const prod = getProdBlogHostOrigin();
     if (prod) return `${prod}${path}`;
