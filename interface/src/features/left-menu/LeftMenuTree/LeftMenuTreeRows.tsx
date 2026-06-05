@@ -8,7 +8,7 @@ import type {
   LeftMenuEmptyEntry,
   LeftMenuEntry,
   LeftMenuGroupEntry,
-  LeftMenuLeafEntry,
+  LeftMenuItemEntry,
 } from "../types";
 import { SidebarRevealRow } from "../SidebarRevealRow";
 import type { SidebarListRevealState } from "../use-sidebar-list-reveal";
@@ -36,7 +36,7 @@ function LeftMenuLeafRow({
   entry,
   depth,
 }: {
-  entry: LeftMenuLeafEntry;
+  entry: LeftMenuItemEntry;
   depth: number;
 }) {
   const className = [
@@ -187,11 +187,15 @@ export function LeftMenuEntryRow({
   depth?: number;
   rootReorderState?: RootReorderState;
 }) {
-  return entry.kind === "group" ? (
-    <LeftMenuGroup entry={entry} depth={depth} rootReorderState={rootReorderState} />
-  ) : (
-    <LeftMenuLeafRow entry={entry} depth={depth} />
-  );
+  if (entry.kind === "group") {
+    return (
+      <LeftMenuGroup entry={entry} depth={depth} rootReorderState={rootReorderState} />
+    );
+  }
+  if (entry.kind === "custom") {
+    return <>{entry.content}</>;
+  }
+  return <LeftMenuLeafRow entry={entry} depth={depth} />;
 }
 
 export function StaticEntries({

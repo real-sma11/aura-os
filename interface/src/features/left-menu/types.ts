@@ -1,6 +1,6 @@
 import type { ComponentType, ReactNode } from "react";
 
-export interface LeftMenuLeafEntry {
+export interface LeftMenuItemEntry {
   kind: "item";
   id: string;
   label: string;
@@ -11,6 +11,24 @@ export interface LeftMenuLeafEntry {
   testId?: string;
   onSelect: () => void;
 }
+
+/**
+ * Escape hatch for apps that need a richer row than the standard
+ * icon/label/suffix leaf (e.g. the Agents list, which renders an avatar,
+ * preview line, and timestamp). The app supplies the already-rendered row
+ * as `content`; the tree only owns layout, virtualization, and the reveal
+ * cascade. Keeps `features/left-menu` free of any app-component imports.
+ */
+export interface LeftMenuCustomEntry {
+  kind: "custom";
+  id: string;
+  content: ReactNode;
+  /** Initial virtualizer size estimate; real height is measured from the DOM. */
+  estimatedHeight?: number;
+  testId?: string;
+}
+
+export type LeftMenuLeafEntry = LeftMenuItemEntry | LeftMenuCustomEntry;
 
 export interface LeftMenuEmptyEntry {
   id: string;

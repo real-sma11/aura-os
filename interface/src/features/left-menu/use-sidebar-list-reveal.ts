@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
+import { LeftMenuPaneActiveContext } from "./pane-active-context";
 
 interface SidebarListRevealOptions {
   enabled?: boolean;
@@ -47,8 +56,10 @@ export function useSidebarListReveal(
     epoch: 0,
     startedAt: 0,
   });
+  const paneActive = useContext(LeftMenuPaneActiveContext);
   const lastRevealedSignatureRef = useRef<string | null>(null);
   const wasVisibleRef = useRef(false);
+  const wasPaneActiveRef = useRef(paneActive);
   const animationFrameRef = useRef<number | null>(null);
 
   const startReveal = useCallback(
@@ -99,6 +110,18 @@ export function useSidebarListReveal(
     if (!enabled || itemCount === 0) return;
     scheduleReveal(false);
   }, [enabled, itemCount, revealKey, scheduleReveal]);
+
+  // Deterministic switch trigger: when this list's keep-alive pane goes
+  // inactive -> active (the Agents <-> Projects flip), replay the cascade.
+  // This does not depend on `ResizeObserver` catching the `display:none`
+  // -> visible transition, which is race-prone across a keep-alive show.
+  useEffect(() => {
+    const wasActive = wasPaneActiveRef.current;
+    wasPaneActiveRef.current = paneActive;
+    if (paneActive && !wasActive) {
+      scheduleReveal(true);
+    }
+  }, [paneActive, scheduleReveal]);
 
   useEffect(() => {
     const scrollRoot = scrollRef.current;

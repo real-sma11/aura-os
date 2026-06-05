@@ -27,6 +27,12 @@ interface LeftMenuTreeProps {
   entries: LeftMenuEntry[];
   onContextMenu?: MouseEventHandler<HTMLDivElement>;
   onKeyDown?: KeyboardEventHandler<HTMLDivElement>;
+  /**
+   * Whether the staggered reveal cascade runs for this tree. Defaults to
+   * `true`. Surfaces that should not animate (e.g. the mobile agent
+   * library) pass `false`.
+   */
+  revealEnabled?: boolean;
   rootReorder?: {
     draggableEntryIds: string[];
     onReorder: (orderedIds: string[]) => void;
@@ -58,7 +64,7 @@ type RootDragState = {
 };
 
 function getVisibleRowCount(entry: LeftMenuEntry): number {
-  if (entry.kind === "item") {
+  if (entry.kind === "item" || entry.kind === "custom") {
     return 1;
   }
 
@@ -73,6 +79,9 @@ function getVisibleRowCount(entry: LeftMenuEntry): number {
 }
 
 function getEntryHeight(entry: LeftMenuEntry): number {
+  if (entry.kind === "custom") {
+    return entry.estimatedHeight ?? ROW_HEIGHT;
+  }
   return getVisibleRowCount(entry) * ROW_HEIGHT;
 }
 
@@ -241,6 +250,7 @@ export function LeftMenuTree({
   entries,
   onContextMenu,
   onKeyDown,
+  revealEnabled = true,
   rootReorder,
 }: LeftMenuTreeProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -248,6 +258,7 @@ export function LeftMenuTree({
   const shouldVirtualize = entries.length > VIRTUALIZE_AFTER;
   const revealKey = useMemo(() => entries.map((entry) => entry.id).join("|"), [entries]);
   const reveal = useSidebarListReveal(scrollRef, {
+    enabled: revealEnabled,
     itemCount: entries.length,
     revealKey,
   });

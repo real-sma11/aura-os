@@ -24,6 +24,29 @@ describe("LeftMenuTree", () => {
     expect(onSelect).toHaveBeenCalledTimes(1);
   });
 
+  it("renders custom-content leaf entries verbatim", () => {
+    const onSelect = vi.fn();
+    const entries: LeftMenuEntry[] = [
+      {
+        kind: "custom",
+        id: "agent-1",
+        estimatedHeight: 58,
+        content: (
+          <button type="button" data-testid="custom-agent-row" onClick={onSelect}>
+            Builder Bot
+          </button>
+        ),
+      },
+    ];
+
+    render(<LeftMenuTree ariaLabel="Agents" entries={entries} />);
+
+    const row = screen.getByTestId("custom-agent-row");
+    expect(row).toHaveTextContent("Builder Bot");
+    fireEvent.click(row);
+    expect(onSelect).toHaveBeenCalledTimes(1);
+  });
+
   it("renders expanded group empty states", () => {
     const entries: LeftMenuEntry[] = [
       {

@@ -1,5 +1,6 @@
 import { memo, type ComponentType } from "react";
 import type { DesktopLeftMenuPaneDefinition } from "../types";
+import { LeftMenuPaneActiveContext } from "../pane-active-context";
 import styles from "./LeftMenu.module.css";
 
 interface LeftMenuProps {
@@ -54,7 +55,9 @@ export function LeftMenu({
             data-active={isActive || undefined}
             data-testid={`desktop-left-menu-pane-${appId}`}
           >
-            <KeepAlivePane Pane={Pane} />
+            <LeftMenuPaneActiveContext.Provider value={isActive}>
+              <KeepAlivePane Pane={Pane} />
+            </LeftMenuPaneActiveContext.Provider>
           </div>
         );
       })}

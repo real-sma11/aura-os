@@ -1,6 +1,5 @@
 import { useMemo, useCallback, useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { useVirtualizer } from "@tanstack/react-virtual";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { Menu } from "@cypher-asi/zui";
 import type { MenuItem } from "@cypher-asi/zui";
@@ -30,12 +29,8 @@ import {
   useSessionsListStore,
 } from "../../../stores/sessions-list-store";
 import { useSidebarSearch } from "../../../hooks/use-sidebar-search";
-import { SidebarRevealRow } from "../../../features/left-menu/SidebarRevealRow";
-import {
-  type SidebarListRevealState,
-  useSidebarListReveal,
-} from "../../../features/left-menu/use-sidebar-list-reveal";
-import { useOverlayScrollbar } from "../../../shared/hooks/use-overlay-scrollbar";
+import { LeftMenuTree } from "../../../features/left-menu";
+import type { LeftMenuEntry } from "../../../features/left-menu";
 import { createAgentChatHandoffState } from "../../../utils/chat-handoff";
 import { standaloneAgentHandoffTarget } from "../../../utils/chat-handoff";
 import { useCascadeDeleteAgent } from "../hooks/use-cascade-delete-agent";
@@ -147,111 +142,9 @@ function AgentConversationRowWithHistory({
   );
 }
 
-const ESTIMATED_ROW_HEIGHT = 58;
-
-interface VirtualizedAgentRowsProps {
-  agents: Agent[];
-  scrollRef: React.RefObject<HTMLDivElement | null>;
-  selectedAgentId: string | undefined;
-  isMobileLibrary: boolean;
-  onSelect: (agentId: string) => void;
-  onHover: (agentId: string) => void;
-  onContextMenu: (e: React.MouseEvent) => void;
-  reveal: SidebarListRevealState;
-}
-
-// Windowed agent list for the desktop sidebar. Only the visible rows (plus a
-// small overscan) are mounted, so revealing the pane (display:none -> visible)
-// and committing the list no longer lay out/paint all 15-45 rows at once —
-// which is what blocked the Agents/Projects switch crossfade. Mirrors the
-// proven `LeftMenuTree` virtualization that already runs in the same
-// keep-alive `LeftMenu` shell.
-function VirtualizedAgentRows({
-  agents,
-  scrollRef,
-  selectedAgentId,
-  isMobileLibrary,
-  onSelect,
-  onHover,
-  onContextMenu,
-  reveal,
-}: VirtualizedAgentRowsProps) {
-  const virtualizer = useVirtualizer({
-    count: agents.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: () => ESTIMATED_ROW_HEIGHT,
-    getItemKey: (index) => agents[index]?.agent_id ?? index,
-    // A non-zero initial height lets the list window from the first paint
-    // even while the pane is still `display: none` (0-height scroll element),
-    // so revealing it never renders the whole list for a frame.
-    initialRect: { width: 0, height: 480 },
-    overscan: 8,
-  });
-  const virtualItems = virtualizer.getVirtualItems();
-
-  // Fallback for environments where the virtualizer can't measure (jsdom /
-  // a genuinely 0-height scroll element): render every row so nothing is
-  // lost. Mirrors `LeftMenuTree`.
-  if (virtualItems.length === 0) {
-    return (
-      <div className={styles.sidebarEntries}>
-        {agents.map((agent, index) => (
-          <SidebarRevealRow
-            key={agent.agent_id}
-            reveal={reveal}
-            revealIndex={index}
-            className={styles.cascadeInner}
-          >
-            <AgentConversationRowWithHistory
-              agent={agent}
-              isMobileLibrary={isMobileLibrary}
-              isSelected={agent.agent_id === selectedAgentId}
-              onSelect={onSelect}
-              onHover={onHover}
-              onContextMenu={onContextMenu}
-            />
-          </SidebarRevealRow>
-        ))}
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className={styles.virtualListContainer}
-      style={{ height: virtualizer.getTotalSize() }}
-    >
-      {virtualItems.map((item, index) => {
-        const agent = agents[item.index];
-        if (!agent) return null;
-        return (
-          <div
-            key={agent.agent_id}
-            ref={virtualizer.measureElement}
-            data-index={item.index}
-            className={styles.virtualRow}
-            style={{ transform: `translateY(${item.start}px)` }}
-          >
-            <SidebarRevealRow
-              reveal={reveal}
-              revealIndex={index}
-              className={styles.cascadeInner}
-            >
-              <AgentConversationRowWithHistory
-                agent={agent}
-                isMobileLibrary={isMobileLibrary}
-                isSelected={agent.agent_id === selectedAgentId}
-                onSelect={onSelect}
-                onHover={onHover}
-                onContextMenu={onContextMenu}
-              />
-            </SidebarRevealRow>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
+// Initial virtualizer size estimate for an agent row (avatar + two lines).
+// The shared `LeftMenuTree` measures the real height from the DOM after mount.
+const AGENT_ROW_ESTIMATED_HEIGHT = 58;
 
 export function AgentList({ mode = "default" }: AgentListProps) {
   const { agents, status: agentsStatus, fetchAgents } = useAgents();
@@ -318,9 +211,6 @@ export function AgentList({ mode = "default" }: AgentListProps) {
     requestedOpen: !!deleteTarget,
     prepare: () => cascade.refresh(),
   });
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const { thumbStyle, visible, onThumbPointerDown } = useOverlayScrollbar(scrollRef);
-
   useEffect(() => {
     setAction(
       "agents",
@@ -585,16 +475,26 @@ export function AgentList({ mode = "default" }: AgentListProps) {
     });
   }, [visibleSortedAgents, searchQuery]);
 
-  const revealKey = useMemo(
-    () => filteredAgents.map((agent) => agent.agent_id).join("|"),
-    [filteredAgents],
-  );
-
-  const reveal = useSidebarListReveal(scrollRef, {
-    enabled: isDesktopSidebar,
-    itemCount: filteredAgents.length,
-    revealKey,
-  });
+  // Map agents to the shared `LeftMenuTree`'s custom-row variant: the tree
+  // owns layout, virtualization, the overlay scrollbar, and the reveal
+  // cascade, while each row stays the rich `AgentConversationRow`. Built
+  // fresh each render (not memoized) so each row instance re-reads its own
+  // store-backed preview; the row itself is memoized, so this stays cheap.
+  const entries: LeftMenuEntry[] = filteredAgents.map((agent) => ({
+    kind: "custom",
+    id: agent.agent_id,
+    estimatedHeight: AGENT_ROW_ESTIMATED_HEIGHT,
+    content: (
+      <AgentConversationRowWithHistory
+        agent={agent}
+        isMobileLibrary={isMobileLibrary}
+        isSelected={agent.agent_id === agentId}
+        onSelect={handleAgentRowClick}
+        onHover={handleHoverPrefetch}
+        onContextMenu={handleContextMenu}
+      />
+    ),
+  }));
 
   const handleDelete = useCallback(async () => {
     if (!deleteTarget) return;
@@ -654,56 +554,18 @@ export function AgentList({ mode = "default" }: AgentListProps) {
 
   return (
     <>
-      {isDesktopSidebar ? (
-        <div
-          className={styles.sidebarRoot}
-          data-agent-surface="agent-list"
-          data-agent-mode={mode}
-        >
-          <div
-            ref={scrollRef}
-            className={styles.sidebarScrollArea}
-            onContextMenu={handleContextMenu}
-          >
-            <VirtualizedAgentRows
-              agents={filteredAgents}
-              scrollRef={scrollRef}
-              selectedAgentId={agentId}
-              isMobileLibrary={isMobileLibrary}
-              onSelect={handleAgentRowClick}
-              onHover={handleHoverPrefetch}
-              onContextMenu={handleContextMenu}
-              reveal={reveal}
-            />
-          </div>
-          <div className={styles.scrollTrack}>
-            <div
-              className={`${styles.scrollThumb} ${visible ? styles.scrollThumbVisible : ""}`}
-              style={thumbStyle}
-              onPointerDown={onThumbPointerDown}
-            />
-          </div>
-        </div>
-      ) : (
-        <div
-          className={styles.list}
+      <div
+        className={styles.treeRoot}
+        data-agent-surface="agent-list"
+        data-agent-mode={mode}
+      >
+        <LeftMenuTree
+          ariaLabel="Agents"
+          entries={entries}
           onContextMenu={handleContextMenu}
-          data-agent-surface="agent-list"
-          data-agent-mode={mode}
-        >
-          {filteredAgents.map((agent) => (
-            <AgentConversationRowWithHistory
-              key={agent.agent_id}
-              agent={agent}
-              isMobileLibrary={isMobileLibrary}
-              isSelected={agent.agent_id === agentId}
-              onSelect={handleAgentRowClick}
-              onHover={handleHoverPrefetch}
-              onContextMenu={handleContextMenu}
-            />
-          ))}
-        </div>
-      )}
+          revealEnabled={isDesktopSidebar}
+        />
+      </div>
 
       {ctxMenu &&
         createPortal(

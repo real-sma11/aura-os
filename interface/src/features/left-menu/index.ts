@@ -9,8 +9,10 @@ export type {
 } from "./use-left-menu-project-reorder";
 export type {
   DesktopLeftMenuPaneDefinition,
+  LeftMenuCustomEntry,
   LeftMenuEmptyEntry,
   LeftMenuEntry,
   LeftMenuGroupEntry,
+  LeftMenuItemEntry,
   LeftMenuLeafEntry,
 } from "./types";
