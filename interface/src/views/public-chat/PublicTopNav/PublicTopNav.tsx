@@ -24,11 +24,11 @@ const PRIMARY_LINKS: ReadonlyArray<TopNavLink> = [
   { label: "Agents", to: "/agents" },
   { label: "Code", to: "/code" },
   { label: "Pricing", to: "/pricing" },
-  { label: "Blog", to: "/blog" },
 ];
 
 /** Routes grouped under the `Resources` dropdown. */
 const RESOURCE_LINKS: ReadonlyArray<TopNavLink> = [
+  { label: "Blog", to: "/blog" },
   { label: "Changelog", to: "/changelog" },
   { label: "Feedback", to: "/feedback" },
   { label: "Models", to: "/models" },

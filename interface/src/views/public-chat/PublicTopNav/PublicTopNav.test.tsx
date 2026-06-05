@@ -1,8 +1,8 @@
 /**
  * Smoke test for `PublicTopNav`. Pins the primary marketing links
- * (Agents / Code / Pricing / Blog) and their hrefs, asserts the Home link
+ * (Agents / Code / Pricing) and their hrefs, asserts the Home link
  * was removed (the logo owns "home"), and verifies the Resources
- * dropdown opens to reveal Changelog / Feedback / Models.
+ * dropdown opens to reveal Blog / Changelog / Feedback / Models.
  */
 
 import { render, screen } from "@testing-library/react";
@@ -17,7 +17,6 @@ const PRIMARY = [
   { label: "Agents", to: "/agents" },
   { label: "Code", to: "/code" },
   { label: "Pricing", to: "/pricing" },
-  { label: "Blog", to: "/blog" },
 ] as const;
 
 describe("PublicTopNav", () => {
@@ -52,7 +51,7 @@ describe("PublicTopNav", () => {
     );
   });
 
-  it("opens the Resources dropdown to reveal Changelog / Feedback / Models", async () => {
+  it("opens the Resources dropdown to reveal Blog / Changelog / Feedback / Models", async () => {
     const user = userEvent.setup();
     render(
       <MemoryRouter initialEntries={["/agents"]}>
@@ -67,6 +66,9 @@ describe("PublicTopNav", () => {
 
     await user.click(screen.getByRole("button", { name: /Resources/i }));
 
+    expect(
+      screen.getByRole("menuitem", { name: "Blog" }),
+    ).toHaveAttribute("href", "/blog");
     expect(
       screen.getByRole("menuitem", { name: "Changelog" }),
     ).toHaveAttribute("href", "/changelog");
