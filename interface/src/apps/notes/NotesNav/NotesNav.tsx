@@ -192,11 +192,11 @@ export function NotesNav({ onCreateNote }: NotesNavProps = {}) {
     try {
       const results = await seedAuraBlog();
       const created = results.filter((r) => r.status === "created").length;
-      const skipped = results.filter((r) => r.status === "skipped").length;
+      const updated = results.filter((r) => r.status === "updated").length;
       const errored = results.filter((r) => r.status === "error").length;
       await loadTree(AURA_BLOG_PROJECT_ID);
       setSeedStatus(
-        `Done: ${created} created, ${skipped} skipped${
+        `Done: ${created} created, ${updated} updated${
           errored ? `, ${errored} failed` : ""
         }.`,
       );

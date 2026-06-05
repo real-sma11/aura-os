@@ -113,20 +113,41 @@ function PostByline({ post }: { post: BlogPost }): React.ReactElement {
     <div className={styles.byline}>
       <Avatar
         type="user"
-        size={40}
+        size={28}
         avatarUrl={post.authorAvatarUrl ?? undefined}
         name={post.authorName ?? undefined}
       />
-      <div className={styles.bylineMeta}>
+      <span className={styles.bylineText}>
         {post.authorName ? (
           <span className={styles.bylineName}>{post.authorName}</span>
         ) : null}
         <span className={styles.bylineReadTime}>
           {post.readTimeMinutes} min read
         </span>
-      </div>
+      </span>
     </div>
   );
+}
+
+/**
+ * Drop the leading H1 (and an immediately-following italic-only meta line,
+ * e.g. `_June 4, 2026 · Nightly …_`) from a post body. The page renders the
+ * title and date from the post metadata, so a body that repeats them would
+ * show the title twice; stripping them lets the reading column open on the
+ * intro paragraph (and its drop cap), matching the reference layout.
+ */
+function stripLeadingTitle(markdown: string): string {
+  const lines = markdown.split("\n");
+  let i = 0;
+  while (i < lines.length && lines[i].trim() === "") i += 1;
+  if (i >= lines.length || !/^#\s+/.test(lines[i].trim())) return markdown;
+  i += 1; // drop the H1
+  let j = i;
+  while (j < lines.length && lines[j].trim() === "") j += 1;
+  if (j < lines.length && /^[*_].*[*_]$/.test(lines[j].trim())) {
+    i = j + 1; // also drop the italic meta line
+  }
+  return lines.slice(i).join("\n").replace(/^\n+/, "");
 }
 
 function BlogPostCard({ post }: { post: BlogPost }): React.ReactElement {
@@ -169,6 +190,120 @@ function BlogPostCard({ post }: { post: BlogPost }): React.ReactElement {
   );
 }
 
+function PostThumb({
+  post,
+  className,
+}: {
+  post: BlogPost;
+  className: string;
+}): React.ReactElement {
+  if (!post.heroImageUrl) {
+    return <div className={`${className} ${styles.thumbFallback}`} />;
+  }
+  return (
+    <img
+      src={post.heroImageUrl}
+      alt=""
+      className={className}
+      loading="lazy"
+      decoding="async"
+    />
+  );
+}
+
+function PostMeta({ post }: { post: BlogPost }): React.ReactElement {
+  return (
+    <div className={styles.listMeta}>
+      <span className={styles.metaType}>{post.blogType}</span>
+      {post.publishedAt ? (
+        <time dateTime={post.publishedAt}>{formatDate(post.publishedAt)}</time>
+      ) : null}
+    </div>
+  );
+}
+
+/** Large lead post shown first on the index, image beside the summary. */
+function FeaturedPost({ post }: { post: BlogPost }): React.ReactElement {
+  return (
+    <Link to={`/blog/${post.slug}`} className={styles.featured}>
+      <div className={styles.featuredHeroWrap}>
+        <PostThumb post={post} className={styles.featuredHero} />
+      </div>
+      <div className={styles.featuredBody}>
+        <h2 className={styles.featuredTitle}>{post.title}</h2>
+        {post.excerpt ? (
+          <p className={styles.featuredExcerpt}>{post.excerpt}</p>
+        ) : null}
+        <PostMeta post={post} />
+      </div>
+    </Link>
+  );
+}
+
+/** Compact 2-up list row: square thumbnail beside the title + meta. */
+function BlogListItem({ post }: { post: BlogPost }): React.ReactElement {
+  return (
+    <Link to={`/blog/${post.slug}`} className={styles.listItem}>
+      <div className={styles.thumbWrap}>
+        <PostThumb post={post} className={styles.thumb} />
+      </div>
+      <div className={styles.listItemBody}>
+        <h3 className={styles.listItemTitle}>{post.title}</h3>
+        <PostMeta post={post} />
+      </div>
+    </Link>
+  );
+}
+
+/** Full archive of every post as a compact Title / Type / Date table. */
+function BlogTable({
+  posts,
+}: {
+  posts: readonly BlogPost[];
+}): React.ReactElement {
+  return (
+    <section className={styles.archive} aria-label="All posts">
+      <span className={styles.archiveLabel}>All posts</span>
+      <table className={styles.table}>
+        <thead>
+          <tr>
+            <th scope="col">Title</th>
+            <th scope="col" className={styles.colType}>
+              Type
+            </th>
+            <th scope="col" className={styles.colDate}>
+              Date
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {posts.map((post) => (
+            <tr key={post.id}>
+              <td>
+                <Link to={`/blog/${post.slug}`} className={styles.tableTitleLink}>
+                  {post.title}
+                </Link>
+              </td>
+              <td className={styles.colType}>
+                <span className={styles.tableType}>{post.blogType}</span>
+              </td>
+              <td className={styles.colDate}>
+                {post.publishedAt ? (
+                  <time dateTime={post.publishedAt}>
+                    {formatDate(post.publishedAt)}
+                  </time>
+                ) : (
+                  "—"
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
 function BlogIndex({
   posts,
   isLoading,
@@ -176,14 +311,11 @@ function BlogIndex({
   posts: readonly BlogPost[];
   isLoading: boolean;
 }): React.ReactElement {
+  const [featured, ...rest] = posts;
   return (
     <div className={styles.indexShell}>
       <header className={styles.indexHeader}>
-        <h1 className={styles.indexTitle}>Blog</h1>
-        <p className={styles.indexSubtitle}>
-          Product updates, engineering deep-dives, and stories from the team
-          building AURA.
-        </p>
+        <span className={styles.latestLabel}>Latest</span>
       </header>
       {isLoading ? (
         <p className={styles.stateMessage} aria-busy="true">
@@ -195,11 +327,17 @@ function BlogIndex({
           <p>The blog is connected, but no posts have been published yet.</p>
         </div>
       ) : (
-        <div className={styles.cardGrid} aria-label="Blog posts">
-          {posts.map((post) => (
-            <BlogPostCard key={post.id} post={post} />
-          ))}
-        </div>
+        <>
+          {featured ? <FeaturedPost post={featured} /> : null}
+          {rest.length > 0 ? (
+            <div className={styles.listGrid} aria-label="Recent posts">
+              {rest.map((post) => (
+                <BlogListItem key={post.id} post={post} />
+              ))}
+            </div>
+          ) : null}
+          <BlogTable posts={posts} />
+        </>
       )}
     </div>
   );
@@ -225,7 +363,7 @@ function TableOfContents({
 
   return (
     <nav className={styles.toc} aria-label="Table of contents">
-      <span className={styles.tocLabel}>On this page</span>
+      <span className={styles.tocLabel}>Table of Contents</span>
       <ul className={styles.tocList}>
         {items.map((item, index) => (
           <li
@@ -254,7 +392,8 @@ function BlogSinglePost({
   bodyLoading: boolean;
   otherPosts: readonly BlogPost[];
 }): React.ReactElement {
-  const toc = useMemo(() => buildToc(body), [body]);
+  const renderedBody = useMemo(() => stripLeadingTitle(body), [body]);
+  const toc = useMemo(() => buildToc(renderedBody), [renderedBody]);
 
   const groupedByType = useMemo(() => {
     const map = new Map<string, BlogPost[]>();
@@ -269,32 +408,7 @@ function BlogSinglePost({
   return (
     <div className={styles.postShell}>
       <div className={styles.postLayout}>
-        <aside className={styles.prevList} aria-label="More posts">
-          <span className={styles.prevListLabel}>More posts</span>
-          {otherPosts.length === 0 ? (
-            <p className={styles.prevListEmpty}>No other posts yet.</p>
-          ) : (
-            <ul>
-              {otherPosts.map((other) => (
-                <li key={other.id}>
-                  <Link to={`/blog/${other.slug}`} className={styles.prevListLink}>
-                    <span className={styles.prevListTitle}>{other.title}</span>
-                    {other.publishedAt ? (
-                      <time
-                        dateTime={other.publishedAt}
-                        className={styles.prevListDate}
-                      >
-                        {formatDate(other.publishedAt)}
-                      </time>
-                    ) : null}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </aside>
-
-        <article className={styles.postColumn}>
+        <aside className={styles.leftRail} aria-label="Blog navigation">
           <nav className={styles.breadcrumb} aria-label="Breadcrumb">
             <Link to="/blog">Blog</Link>
             <span aria-hidden="true" className={styles.breadcrumbSep}>
@@ -303,6 +417,36 @@ function BlogSinglePost({
             <span className={styles.breadcrumbCurrent}>{post.blogType}</span>
           </nav>
 
+          <div className={styles.prevList}>
+            <span className={styles.prevListLabel}>More posts</span>
+            {otherPosts.length === 0 ? (
+              <p className={styles.prevListEmpty}>No other posts yet.</p>
+            ) : (
+              <ul>
+                {otherPosts.map((other) => (
+                  <li key={other.id}>
+                    <Link
+                      to={`/blog/${other.slug}`}
+                      className={styles.prevListLink}
+                    >
+                      <span className={styles.prevListTitle}>{other.title}</span>
+                      {other.publishedAt ? (
+                        <time
+                          dateTime={other.publishedAt}
+                          className={styles.prevListDate}
+                        >
+                          {formatDate(other.publishedAt)}
+                        </time>
+                      ) : null}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </aside>
+
+        <article className={styles.postColumn}>
           {post.publishedAt ? (
             <time className={styles.postDate} dateTime={post.publishedAt}>
               {formatDate(post.publishedAt)}
@@ -337,7 +481,7 @@ function BlogSinglePost({
                 rehypePlugins={MD_REHYPE}
                 components={MD_COMPONENTS}
               >
-                {body}
+                {renderedBody}
               </ReactMarkdown>
             ) : (
               <p className={styles.stateMessage}>

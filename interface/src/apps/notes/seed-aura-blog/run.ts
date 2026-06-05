@@ -15,6 +15,8 @@
 
 import { api } from "../../../api/client";
 import { uploadMarkdown } from "../../../api/upload";
+import { useAuthStore } from "../../../stores/auth-store";
+import type { Note } from "../../../shared/api/notes";
 import { AURA_BLOG_PROJECT_ID } from "../aura-blog";
 import {
   renderPostMarkdown,
@@ -23,7 +25,7 @@ import {
   VIDEO_PLACEHOLDER_URL,
 } from "./posts";
 
-export type SeedStatus = "created" | "skipped" | "error";
+export type SeedStatus = "created" | "updated" | "skipped" | "error";
 
 export interface SeedResult {
   slug: string;
@@ -47,13 +49,25 @@ export async function seedAuraBlog(): Promise<SeedResult[]> {
   const projectId = AURA_BLOG_PROJECT_ID;
   const results: SeedResult[] = [];
 
-  let existingSlugs = new Set<string>();
+  // The seeding runs in the authenticated session, so the current user is
+  // the post author (n3o). Use their real profile picture + id for the
+  // byline so the blog shows the actual avatar rather than a placeholder.
+  const user = useAuthStore.getState().user;
+  const authorAvatarUrl = user?.profile_image?.trim() || undefined;
+  const authorId = user?.user_id?.trim() || undefined;
+  const byline = {
+    authorName: SEED_AUTHOR_NAME,
+    ...(authorAvatarUrl ? { authorAvatarUrl } : {}),
+    ...(authorId ? { authorId } : {}),
+  };
+
+  let existingBySlug = new Map<string, Note>();
   try {
     const tree = await api.notes.tree(projectId);
-    existingSlugs = new Set(
+    existingBySlug = new Map(
       tree.notes
-        .map((n) => n.slug)
-        .filter((s): s is string => typeof s === "string" && s.length > 0),
+        .filter((n): n is Note & { slug: string } => Boolean(n.slug))
+        .map((n) => [n.slug, n]),
     );
   } catch {
     // If the tree can't be read, fall through: per-post creates will
@@ -65,17 +79,22 @@ export async function seedAuraBlog(): Promise<SeedResult[]> {
   const ordered = [...SEED_POSTS].sort((a, b) => b.sortOrder - a.sortOrder);
 
   for (const post of ordered) {
-    if (existingSlugs.has(post.slug)) {
-      results.push({
-        slug: post.slug,
-        title: post.title,
-        status: "skipped",
-        message: "already exists",
-      });
-      continue;
-    }
-
     try {
+      const existing = existingBySlug.get(post.slug);
+      if (existing) {
+        // Backfill the byline (incl. avatar) on an already-published post
+        // so re-running the action heals posts created before the author
+        // picture was set.
+        await api.notes.updateNote(projectId, existing.id, byline);
+        results.push({
+          slug: post.slug,
+          title: post.title,
+          status: "updated",
+          message: "byline refreshed",
+        });
+        continue;
+      }
+
       const note = await api.notes.createNote(projectId, {
         title: post.title,
         slug: post.slug,
@@ -95,7 +114,7 @@ export async function seedAuraBlog(): Promise<SeedResult[]> {
         readTimeMinutes: post.readTimeMinutes,
         blogType: post.blogType,
         sortOrder: post.sortOrder,
-        authorName: SEED_AUTHOR_NAME,
+        ...byline,
       });
 
       await api.notes.transitionNote(projectId, note.id, "published");
