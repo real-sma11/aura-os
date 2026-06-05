@@ -204,15 +204,19 @@ export function FlowFieldBackground({
     };
     resize();
 
+    // Honor reduced-motion by slowing the drift rather than freezing it
+    // entirely — the field is a decorative, low-contrast wash and a dead-
+    // still frame reads as "broken" (some embedded webviews also report
+    // reduce by default, which previously froze the bg outright).
     const reducedMotion = window.matchMedia(
       "(prefers-reduced-motion: reduce)",
     ).matches;
+    const speed = reducedMotion ? 0.4 : 1;
 
     let raf = 0;
     let lastTime = performance.now();
 
-    const renderFrame = (timeSeconds: number): void => {
-      uniforms.uTime.value = timeSeconds;
+    const renderFrame = (): void => {
       renderer.render(scene, camera);
     };
 
@@ -221,13 +225,13 @@ export function FlowFieldBackground({
       // not snap the animation forward when it resumes.
       const dt = (now - lastTime) / 1000;
       lastTime = now;
-      uniforms.uTime.value += dt;
+      uniforms.uTime.value += dt * speed;
       renderer.render(scene, camera);
       raf = requestAnimationFrame(loop);
     };
 
     const start = (): void => {
-      if (raf || reducedMotion) return;
+      if (raf) return;
       lastTime = performance.now();
       raf = requestAnimationFrame(loop);
     };
@@ -244,19 +248,13 @@ export function FlowFieldBackground({
 
     const resizeObserver = new ResizeObserver(() => {
       resize();
-      // Repaint immediately so a resize while paused/reduced-motion is
-      // reflected without waiting for the next animation frame.
-      if (!raf) renderFrame(uniforms.uTime.value);
+      // Repaint immediately so a resize is reflected even between frames.
+      if (!raf) renderFrame();
     });
     resizeObserver.observe(parent);
     document.addEventListener("visibilitychange", onVisibility);
 
-    if (reducedMotion) {
-      // Single representative static frame.
-      renderFrame(8);
-    } else {
-      start();
-    }
+    start();
 
     return () => {
       stop();
