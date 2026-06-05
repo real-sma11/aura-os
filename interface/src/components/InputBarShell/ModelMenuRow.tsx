@@ -1,11 +1,4 @@
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-} from "react";
+import { memo, useCallback, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { ChevronRight } from "lucide-react";
 import {
@@ -16,6 +9,7 @@ import {
   type ModelEffort,
   type ModelOption,
 } from "../../constants/models";
+import { useFlyoutAnchor } from "./use-flyout-anchor";
 import styles from "./InputBarShell.module.css";
 
 export interface ModelMenuRowProps {
@@ -39,20 +33,13 @@ export interface ModelMenuRowProps {
   onSelect: (modelId: string, effort?: ModelEffort) => void;
 }
 
-interface FlyoutPosition {
-  top: number;
-  left?: number;
-  right?: number;
-}
-
 const FLYOUT_WIDTH = 184;
-const CLOSE_DELAY_MS = 120;
 
 // Only one effort flyout should ever be mounted. Each row registers an
 // immediate-close callback here while its flyout is open; opening a new row's
 // flyout synchronously closes the previous one so the two portals never
 // overlap (which otherwise renders a brief "ghost" of the prior submenu
-// during the CLOSE_DELAY_MS window).
+// during the close delay window).
 let closeActiveFlyout: (() => void) | null = null;
 
 /**
@@ -73,8 +60,10 @@ export const ModelMenuRow = memo(function ModelMenuRow({
   onSelect,
 }: ModelMenuRowProps) {
   const rowRef = useRef<HTMLButtonElement>(null);
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [flyoutPos, setFlyoutPos] = useState<FlyoutPosition | null>(null);
+  // Stores this row's close handler so the module-level single-open slot
+  // can dismiss it when another row takes over. Populated after the hook
+  // returns its (stable) `immediateClose`.
+  const selfCloseRef = useRef<() => void>(() => {});
 
   const hasEfforts = !disabled && !!model.efforts && model.efforts.length > 0;
   // The active model's badge tracks the chosen effort so the displayed
@@ -90,69 +79,42 @@ export const ModelMenuRow = memo(function ModelMenuRow({
   // header; the effort selector is just an optional section within it.
   const hasFlyout = !disabled;
 
-  const clearCloseTimer = useCallback(() => {
-    if (closeTimer.current) {
-      clearTimeout(closeTimer.current);
-      closeTimer.current = null;
-    }
-  }, []);
-
-  // Synchronously hide this row's flyout and release the shared slot if it
-  // belongs to us. Used both by the delayed close and by another row taking
-  // over the slot.
-  const immediateClose = useCallback(() => {
-    clearCloseTimer();
-    setFlyoutPos(null);
-    if (closeActiveFlyout === immediateCloseRef.current) {
-      closeActiveFlyout = null;
-    }
-  }, [clearCloseTimer]);
-
-  // Keep a stable identity for the slot comparison above even though
-  // immediateClose is recreated when its deps change.
-  const immediateCloseRef = useRef(immediateClose);
-  immediateCloseRef.current = immediateClose;
-
-  const openFlyout = useCallback(() => {
-    if (!hasFlyout) return;
-    clearCloseTimer();
-    // Close any other row's open flyout before showing ours so only one is
-    // ever mounted at a time.
-    if (closeActiveFlyout && closeActiveFlyout !== immediateCloseRef.current) {
-      closeActiveFlyout();
-    }
-    closeActiveFlyout = immediateCloseRef.current;
-    const rect = rowRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const spaceRight = window.innerWidth - rect.right;
-    const pos: FlyoutPosition =
-      spaceRight >= FLYOUT_WIDTH + 8
-        ? { top: rect.top, left: rect.right + 2 }
-        : { top: rect.top, right: window.innerWidth - rect.left + 2 };
-    setFlyoutPos(pos);
-  }, [clearCloseTimer, hasFlyout]);
-
-  const scheduleClose = useCallback(() => {
-    clearCloseTimer();
-    closeTimer.current = setTimeout(() => immediateCloseRef.current(), CLOSE_DELAY_MS);
-  }, [clearCloseTimer]);
-
-  useEffect(() => () => immediateCloseRef.current(), []);
+  const {
+    flyoutPos,
+    flyoutStyle,
+    openFlyout,
+    scheduleClose,
+    clearCloseTimer,
+    immediateClose,
+  } = useFlyoutAnchor(rowRef, {
+    flyoutWidth: FLYOUT_WIDTH,
+    enabled: hasFlyout,
+    // Close any other row's open flyout before showing ours so only one
+    // is ever mounted at a time, then claim the shared slot.
+    onBeforeOpen: () => {
+      if (closeActiveFlyout && closeActiveFlyout !== selfCloseRef.current) {
+        closeActiveFlyout();
+      }
+      closeActiveFlyout = selfCloseRef.current;
+    },
+    // Release the shared slot when ours closes, if we still hold it.
+    onClose: () => {
+      if (closeActiveFlyout === selfCloseRef.current) {
+        closeActiveFlyout = null;
+      }
+    },
+  });
+  // Mirror the hook's stable close handler into our slot ref after commit
+  // (never during render, per `react-hooks/refs`); the module-level
+  // coordinator only ever calls it from a later open/close event.
+  useEffect(() => {
+    selfCloseRef.current = immediateClose;
+  });
 
   const handleRowClick = useCallback(() => {
     if (disabled) return;
     onSelect(model.id);
   }, [disabled, model.id, onSelect]);
-
-  const flyoutStyle: CSSProperties | undefined = flyoutPos
-    ? {
-        position: "fixed",
-        top: flyoutPos.top,
-        ...(flyoutPos.left != null ? { left: flyoutPos.left } : {}),
-        ...(flyoutPos.right != null ? { right: flyoutPos.right } : {}),
-        zIndex: 10001,
-      }
-    : undefined;
 
   return (
     <div

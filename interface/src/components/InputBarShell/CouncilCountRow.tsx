@@ -1,14 +1,8 @@
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-} from "react";
+import { memo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { ChevronRight } from "lucide-react";
 import type { CouncilCount } from "../../stores/chat-ui-store";
+import { useFlyoutAnchor } from "./use-flyout-anchor";
 import styles from "./InputBarShell.module.css";
 
 export interface CouncilCountRowProps {
@@ -18,15 +12,8 @@ export interface CouncilCountRowProps {
   onSelect: (count: CouncilCount) => void;
 }
 
-interface FlyoutPosition {
-  top: number;
-  left?: number;
-  right?: number;
-}
-
 const COUNCIL_COUNTS: CouncilCount[] = [1, 2, 3, 4];
 const FLYOUT_WIDTH = 184;
-const CLOSE_DELAY_MS = 120;
 
 function countValueLabel(count: CouncilCount): string {
   return count === 1 ? "1x" : `${count}x`;
@@ -52,54 +39,14 @@ export const CouncilCountRow = memo(function CouncilCountRow({
   onSelect,
 }: CouncilCountRowProps) {
   const rowRef = useRef<HTMLButtonElement>(null);
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [flyoutPos, setFlyoutPos] = useState<FlyoutPosition | null>(null);
-
-  const clearCloseTimer = useCallback(() => {
-    if (closeTimer.current) {
-      clearTimeout(closeTimer.current);
-      closeTimer.current = null;
-    }
-  }, []);
 
   // This row sits at the top of every model picker menu (the single
   // picker and each council slot picker), but only one of those menus is
   // open at a time, so at most one CouncilCountRow is mounted at once.
   // Unlike `ModelMenuRow` no cross-row "single open flyout" coordination
   // is needed — this row just owns its own portal.
-  const immediateClose = useCallback(() => {
-    clearCloseTimer();
-    setFlyoutPos(null);
-  }, [clearCloseTimer]);
-
-  const openFlyout = useCallback(() => {
-    clearCloseTimer();
-    const rect = rowRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const spaceRight = window.innerWidth - rect.right;
-    const pos: FlyoutPosition =
-      spaceRight >= FLYOUT_WIDTH + 8
-        ? { top: rect.top, left: rect.right + 2 }
-        : { top: rect.top, right: window.innerWidth - rect.left + 2 };
-    setFlyoutPos(pos);
-  }, [clearCloseTimer]);
-
-  const scheduleClose = useCallback(() => {
-    clearCloseTimer();
-    closeTimer.current = setTimeout(immediateClose, CLOSE_DELAY_MS);
-  }, [clearCloseTimer, immediateClose]);
-
-  useEffect(() => clearCloseTimer, [clearCloseTimer]);
-
-  const flyoutStyle: CSSProperties | undefined = flyoutPos
-    ? {
-        position: "fixed",
-        top: flyoutPos.top,
-        ...(flyoutPos.left != null ? { left: flyoutPos.left } : {}),
-        ...(flyoutPos.right != null ? { right: flyoutPos.right } : {}),
-        zIndex: 10001,
-      }
-    : undefined;
+  const { flyoutPos, flyoutStyle, openFlyout, scheduleClose, clearCloseTimer } =
+    useFlyoutAnchor(rowRef, { flyoutWidth: FLYOUT_WIDTH });
 
   return (
     <div
