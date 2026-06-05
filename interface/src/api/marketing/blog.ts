@@ -13,7 +13,7 @@
  *   - GET `/api/public/blog/:slug`  -> single published post (404 if none).
  */
 
-import { resolveApiUrl } from "../../shared/lib/host-config";
+import { resolveBlogApiUrl } from "../../shared/lib/host-config";
 
 /**
  * Public, camelCase projection of a published `StorageNote` blog post as
@@ -63,7 +63,7 @@ export class BlogPostNotFoundError extends Error {
  * than an error screen.
  */
 export async function fetchBlogPosts(): Promise<BlogPost[]> {
-  const url = resolveApiUrl("/api/public/blog");
+  const url = resolveBlogApiUrl("/api/public/blog");
 
   try {
     const res = await fetch(url, { cache: "no-store" });
@@ -89,7 +89,7 @@ export async function fetchBlogPosts(): Promise<BlogPost[]> {
  * cases can be distinguished in the view.
  */
 export async function fetchBlogPost(slug: string): Promise<BlogPost> {
-  const url = resolveApiUrl(`/api/public/blog/${encodeURIComponent(slug)}`);
+  const url = resolveBlogApiUrl(`/api/public/blog/${encodeURIComponent(slug)}`);
   const res = await fetch(url, { cache: "no-store" });
   if (res.status === 404) {
     throw new BlogPostNotFoundError(slug);

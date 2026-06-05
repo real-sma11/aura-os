@@ -144,6 +144,30 @@ export function resolveControlPlaneUrl(path: string): string {
   return cloud ? `${cloud}${path}` : resolveApiUrl(path);
 }
 
+// Prod origin that serves the public blog. Mirrors the control-plane host
+// convention (`VITE_NATIVE_DEFAULT_HOST`, which release builds bake to
+// `https://api.aura.ai`); falls back to that same origin so local web dev,
+// where the env var is unset, still has a target.
+export function getProdBlogHostOrigin(): string | null {
+  return getControlPlaneHostOrigin() ?? normalizeHostOrigin("https://api.aura.ai");
+}
+
+// Resolve the public blog endpoint. In local dev the local server usually has
+// no storage configured, so the blog is empty; point it at the prod blog
+// instead. An explicitly configured host (Settings / `?host=`) always wins so
+// devs can still target a local server for CMS testing, and prod/native builds
+// keep their normal same-origin / configured-host behavior.
+export function resolveBlogApiUrl(path: string): string {
+  if (getConfiguredHostOrigin()) {
+    return resolveApiUrl(path);
+  }
+  if (import.meta.env.DEV) {
+    const prod = getProdBlogHostOrigin();
+    if (prod) return `${prod}${path}`;
+  }
+  return resolveApiUrl(path);
+}
+
 export function resolveWsUrl(path: string): string {
   if (!hasWindow()) return path;
 
