@@ -263,7 +263,7 @@ export function OrgSettingsPanel({ isOpen, onClose, initialSection, initialSubAr
                   </span>
                 </div>
                 {subGroups.map((group) => (
-                  <div key={group.group}>
+                  <div key={group.group} className={styles.navSubGroup}>
                     <div className={styles.navGroupLabel}>{group.group}</div>
                     <Navigator
                       items={group.items.map((s) => ({

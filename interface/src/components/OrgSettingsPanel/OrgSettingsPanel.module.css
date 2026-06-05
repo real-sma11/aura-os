@@ -119,6 +119,18 @@
   color: var(--color-text-primary);
 }
 
+/* Drill-down sub-nav groups: each group wraps its own label + Navigator, so
+   `.navGroupLabel:first-of-type` zeroes the per-group padding. Add explicit
+   spacing on the wrapper to separate the sections (Appearance, Customization,
+   Desktop, Library). */
+.navSubGroup {
+  margin-top: var(--space-4);
+}
+
+.navSubGroup:first-child {
+  margin-top: var(--space-1);
+}
+
 .navFooter {
   margin-top: auto;
   padding-top: var(--space-3);
