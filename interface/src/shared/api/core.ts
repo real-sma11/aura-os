@@ -1,6 +1,6 @@
 import type { ApiError } from "../types";
 import { authHeaders } from "../../shared/lib/auth-token";
-import { resolveApiUrl } from "../../shared/lib/host-config";
+import { resolveApiUrl, resolveControlPlaneUrl } from "../../shared/lib/host-config";
 
 export class ApiClientError extends Error {
   status: number;
@@ -220,13 +220,21 @@ export function dispatchInsufficientCredits(): void {
  */
 export interface ApiFetchOptions extends RequestInit {
   timeoutMs?: number;
+  /**
+   * Target the shared cloud control-plane (prod aura-os-server) instead of the
+   * normally-resolved host. Used by endpoints like the Telegram channel routes
+   * that must hit the single server running the bot/link store, even on desktop
+   * where the general host is the bundled local server.
+   */
+  useControlPlane?: boolean;
 }
 
 export async function apiFetch<T>(
   path: string,
   options?: ApiFetchOptions,
 ): Promise<T> {
-  const { timeoutMs, signal: callerSignal, ...rest } = options ?? {};
+  const { timeoutMs, useControlPlane, signal: callerSignal, ...rest } =
+    options ?? {};
 
   let timedOut = false;
   const controller = timeoutMs != null ? new AbortController() : undefined;
@@ -251,8 +259,10 @@ export async function apiFetch<T>(
   }
   const signal = controller ? controller.signal : callerSignal;
 
+  const url = useControlPlane ? resolveControlPlaneUrl(path) : resolveApiUrl(path);
+
   try {
-    const res = await fetch(resolveApiUrl(path), {
+    const res = await fetch(url, {
       headers: { "Content-Type": "application/json", ...authHeaders() },
       ...rest,
       signal,

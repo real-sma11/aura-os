@@ -142,8 +142,14 @@ pub(crate) async fn link_telegram(
 /// `GET /api/agents/:agent_id/channels`
 pub(crate) async fn list_channels(
     State(state): State<AppState>,
+    AuthJwt(jwt): AuthJwt,
     Path(agent_id): Path<AgentId>,
 ) -> ApiResult<Json<ListChannelsResponse>> {
+    // Authorize: the caller must be able to resolve this agent with their own
+    // JWT (same scoping as `link_telegram`). Without this, any verified user
+    // could enumerate another agent's linked chat ids.
+    resolve_agent(&state, &agent_id, &jwt).await?;
+
     let links = state
         .channel_service
         .list_links_for_agent(&agent_id.to_string())
@@ -172,8 +178,13 @@ pub(crate) async fn list_channels(
 /// `channel_id` is the `"<kind>:<chat_id>"` handle returned by the list route.
 pub(crate) async fn disconnect_channel(
     State(state): State<AppState>,
-    Path((_agent_id, channel_id)): Path<(AgentId, String)>,
+    AuthJwt(jwt): AuthJwt,
+    Path((agent_id, channel_id)): Path<(AgentId, String)>,
 ) -> ApiResult<Json<DisconnectResponse>> {
+    // Authorize: the caller must be able to resolve this agent with their own
+    // JWT before mutating any of its links.
+    resolve_agent(&state, &agent_id, &jwt).await?;
+
     let (kind_str, chat_id) = channel_id.split_once(':').ok_or_else(|| {
         ApiError::bad_request("channel_id must be in the form `<kind>:<chat_id>`")
     })?;
@@ -186,6 +197,23 @@ pub(crate) async fn disconnect_channel(
             )))
         }
     };
+
+    // `delete_link` is keyed only by `(kind, chat_id)`, so an agent-ownership
+    // check alone wouldn't stop a caller from passing their own agent id with
+    // another agent's chat id. Confirm the target link actually belongs to the
+    // resolved agent before deleting.
+    match state
+        .channel_service
+        .get_link(kind, chat_id)
+        .map_err(|error| ApiError::internal(format!("failed to load channel: {error}")))?
+    {
+        Some(link) if link.agent_id == agent_id.to_string() => {}
+        _ => {
+            return Err(ApiError::not_found(format!(
+                "channel `{channel_id}` not found for agent {agent_id}"
+            )))
+        }
+    }
 
     state
         .channel_service

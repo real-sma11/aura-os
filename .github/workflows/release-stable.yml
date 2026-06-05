@@ -238,6 +238,11 @@ jobs:
           APP_VERSION: ${{ steps.version.outputs.version }}
           APP_COMMIT: ${{ github.sha }}
           APP_CHANNEL: stable
+          # Cloud control-plane origin baked into the desktop bundle. The
+          # desktop talks to its bundled local server for everything except
+          # endpoints that must hit the single prod authority (Telegram channel
+          # link/list/disconnect), which `resolveControlPlaneUrl` routes here.
+          VITE_NATIVE_DEFAULT_HOST: ${{ vars.VITE_DESKTOP_CONTROL_PLANE_HOST || 'https://api.aura.ai' }}
         run: |
           npm ci
           npm run build

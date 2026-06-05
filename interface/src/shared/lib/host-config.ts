@@ -125,6 +125,25 @@ export function resolveApiUrl(path: string): string {
   return hostOrigin ? `${hostOrigin}${path}` : path;
 }
 
+// Build-time cloud control-plane origin (the prod aura-os-server that runs the
+// central Telegram bot + link store). Reuses `VITE_NATIVE_DEFAULT_HOST`, which
+// the desktop build bakes to the prod API.
+export function getControlPlaneHostOrigin(): string | null {
+  return normalizeHostOrigin(import.meta.env.VITE_NATIVE_DEFAULT_HOST);
+}
+
+// Resolve a URL for endpoints that must hit the shared cloud control-plane
+// regardless of which server the app is otherwise talking to. The Telegram
+// bridge (poller + pending/durable link store) is a single authority on prod,
+// so link/list/disconnect must target it even on desktop, where the general
+// host is the bundled local server (`?host=` wins in `getTargetHostOrigin`).
+// Falls back to the normal host resolution when no cloud origin is configured
+// (e.g. web/local dev), preserving existing behavior there.
+export function resolveControlPlaneUrl(path: string): string {
+  const cloud = getControlPlaneHostOrigin();
+  return cloud ? `${cloud}${path}` : resolveApiUrl(path);
+}
+
 export function resolveWsUrl(path: string): string {
   if (!hasWindow()) return path;
 
