@@ -28,14 +28,25 @@ export interface AvatarState {
  * For local agents without an active status, defaults to "idle" so the
  * purple dot always renders.
  */
-export function useAvatarState(id: string | undefined): AvatarState {
-  const rawStatus = useProfileStatusStore((s) => (id ? s.statuses[id] : undefined));
-  const rawMachineType = useProfileStatusStore((s) => (id ? s.machineTypes[id] : undefined));
-
+/**
+ * Pure resolver for an avatar's visual state from its raw store values.
+ * Shared by {@link useAvatarState} and the batched agent-list row model so
+ * single-row and list-level reads stay byte-identical.
+ */
+export function resolveAvatarState(
+  rawStatus: string | undefined,
+  rawMachineType: "local" | "remote" | undefined,
+): AvatarState {
   const machineType = rawMachineType ?? "local";
   const isLocal = machineType === "local";
   const normalized = rawStatus ? STATUS_MAP[rawStatus.toLowerCase()] ?? rawStatus : undefined;
   const status = normalized ?? (isLocal ? "idle" : undefined);
-
   return { status, machineType, isLocal };
+}
+
+export function useAvatarState(id: string | undefined): AvatarState {
+  const rawStatus = useProfileStatusStore((s) => (id ? s.statuses[id] : undefined));
+  const rawMachineType = useProfileStatusStore((s) => (id ? s.machineTypes[id] : undefined));
+
+  return resolveAvatarState(rawStatus, rawMachineType);
 }

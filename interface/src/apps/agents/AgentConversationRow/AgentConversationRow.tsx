@@ -1,17 +1,21 @@
-import { memo } from "react";
+import { memo, useEffect } from "react";
 import { Pin } from "lucide-react";
 import { formatChatTime } from "../../../shared/utils/format";
 import { stripEmojis } from "../../../shared/utils/text-normalize";
 import type { Agent } from "../../../shared/types";
 import { isSuperAgent } from "../../../shared/types/permissions";
 import type { DisplaySessionEvent } from "../../../shared/types/stream";
+import type { LoopActivityPayload } from "../../../shared/types/aura-events";
 import { Avatar } from "../../../components/Avatar";
-import { LoopProgress } from "../../../components/LoopProgress";
-import { useAvatarState } from "../../../hooks/use-avatar-state";
-import { useIsAgentBusy } from "../../../hooks/use-is-agent-busy";
+import { LoopProgressView } from "../../../components/LoopProgress";
+import { useAfterPaint } from "../../../shared/hooks/use-after-paint";
 import { agentDisplayName } from "../../../lib/derive-project-agent-title";
-import { useAgentStore } from "../stores";
 import styles from "./AgentConversationRow.module.css";
+
+// Agent ids whose avatar image has mounted at least once this session. Used to
+// skip the after-paint defer on subsequent re-mounts (e.g. flipping back to the
+// Agents pane) so warm switches don't re-flicker the avatars.
+const seenAvatarAgentIds = new Set<string>();
 
 function stripMarkdown(text: string): string {
   return text
@@ -27,6 +31,12 @@ interface AgentConversationRowProps {
   lastMessage: DisplaySessionEvent | undefined;
   showMetadataOnly?: boolean;
   isSelected: boolean;
+  /** Pre-resolved presentation state from the list-level batched model. */
+  status?: string;
+  isLocal?: boolean;
+  busy?: boolean;
+  loopActivity?: LoopActivityPayload | null;
+  isPinned?: boolean;
   onClick: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
   onMouseEnter: () => void;
@@ -37,6 +47,11 @@ function AgentConversationRowBase({
   lastMessage,
   showMetadataOnly = false,
   isSelected,
+  status,
+  isLocal = false,
+  busy = false,
+  loopActivity = null,
+  isPinned = false,
   onClick,
   onContextMenu,
   onMouseEnter,
@@ -51,14 +66,15 @@ function AgentConversationRowBase({
   const preview = showMetadataOnly
     ? agentDescription || fallback
     : messagePreview || agentDescription || fallback;
-  const { status, isLocal } = useAvatarState(agent.agent_id);
-  // Combined "this template is actively working" signal across
-  // automation loops, standalone-agent chat streams, and project-agent
-  // chat streams. See `useIsAgentBusy` for why each source is needed.
-  const isAgentBusy = useIsAgentBusy(agent.agent_id);
-  const pinnedIds = useAgentStore((s) => s.pinnedAgentIds);
-  const isPinned = agent.is_pinned || pinnedIds.has(agent.agent_id);
   const isCeo = isSuperAgent(agent);
+
+  // Defer the avatar image to the frame after the row paints so the heavy
+  // decode never blocks the switch. Already-seen agents render it immediately.
+  const avatarReady = useAfterPaint(seenAvatarAgentIds.has(agent.agent_id));
+  useEffect(() => {
+    if (avatarReady) seenAvatarAgentIds.add(agent.agent_id);
+  }, [avatarReady, agent.agent_id]);
+  const avatarUrl = avatarReady ? agent.icon ?? undefined : undefined;
 
   return (
     <button
@@ -74,13 +90,13 @@ function AgentConversationRowBase({
       data-agent-selected={isSelected ? "true" : "false"}
     >
       <Avatar
-        avatarUrl={agent.icon ?? undefined}
+        avatarUrl={avatarUrl}
         name={displayName}
         type="agent"
         size={36}
         status={status}
         isLocal={isLocal}
-        busy={isAgentBusy}
+        busy={busy}
         className={styles.avatar}
       />
 
@@ -97,8 +113,8 @@ function AgentConversationRowBase({
             )}
           </span>
           <span className={styles.time}>
-            <LoopProgress
-              source={{ agentId: agent.agent_id }}
+            <LoopProgressView
+              activity={loopActivity}
               size={12}
               className={styles.loopProgress}
             />
@@ -112,9 +128,9 @@ function AgentConversationRowBase({
 }
 
 /**
- * Memoized so that, with virtualization keeping only the visible rows
- * mounted, an unrelated parent re-render (or a store update for a
- * different agent) does not re-render every row. Effective only because
- * the list passes referentially-stable callbacks.
+ * Pure, props-driven, memoized row. All live state (avatar status, busy,
+ * loop activity, pin, preview) is resolved once at the list level by
+ * `useAgentRowModels` and passed in, so re-mounting the row on a pane switch
+ * carries no store subscriptions — only a cheap reconciliation.
  */
 export const AgentConversationRow = memo(AgentConversationRowBase);

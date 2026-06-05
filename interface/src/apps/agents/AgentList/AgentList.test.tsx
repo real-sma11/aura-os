@@ -266,6 +266,27 @@ vi.mock("./AgentList.module.css", () => ({
   default: new Proxy({}, { get: (_target, prop) => String(prop) }),
 }));
 
+// The batched row-model hook is exercised in its own suite; here we stub it so
+// AgentList's behavior (navigation, prefetch, delete) is tested without wiring
+// up every backing store. Preview still flows from the mocked cache so the
+// preview-reactivity assertion holds.
+vi.mock("./use-agent-row-models", () => ({
+  useAgentRowModels: (agents: Array<{ agent_id: string }>) => {
+    const map = new Map();
+    for (const a of agents) {
+      map.set(a.agent_id, {
+        status: undefined,
+        isLocal: true,
+        busy: false,
+        loopActivity: null,
+        lastMessage: mocks.previewLastMessages[`agent:${a.agent_id}`],
+        isPinned: false,
+      });
+    }
+    return map;
+  },
+}));
+
 import { AgentList } from "./AgentList";
 
 const agent = {

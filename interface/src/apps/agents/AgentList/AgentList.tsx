@@ -31,6 +31,7 @@ import {
 import { useSidebarSearch } from "../../../hooks/use-sidebar-search";
 import { LeftMenuTree } from "../../../features/left-menu";
 import type { LeftMenuEntry } from "../../../features/left-menu";
+import { useAgentRowModels, type AgentRowModel } from "./use-agent-row-models";
 import { createAgentChatHandoffState } from "../../../utils/chat-handoff";
 import { standaloneAgentHandoffTarget } from "../../../utils/chat-handoff";
 import { useCascadeDeleteAgent } from "../hooks/use-cascade-delete-agent";
@@ -99,6 +100,7 @@ interface AgentListProps {
 
 interface AgentRowProps {
   agent: Agent;
+  model: AgentRowModel | undefined;
   isMobileLibrary: boolean;
   isSelected: boolean;
   /** Id-arg callbacks so the list can pass referentially-stable handlers. */
@@ -107,34 +109,34 @@ interface AgentRowProps {
   onContextMenu: (e: React.MouseEvent) => void;
 }
 
-// Thin wrapper that subscribes to this agent's preview message and feeds the
+// Thin wrapper that binds the per-row click/hover closures from the list's
+// stable id-arg callbacks and forwards the batched `AgentRowModel` to the
 // memoized presentational row. Deliberately NOT memoized itself: it re-renders
-// with its parent (cheap — one store read), but binds the per-row click/hover
-// closures from stable id-arg callbacks via `useCallback` so the heavy,
-// memoized `AgentConversationRow` only re-renders when its own inputs
-// (`lastMessage`, `isSelected`, the agent) actually change.
-function AgentConversationRowWithHistory({
+// with its parent but carries no store subscriptions, so the heavy memoized
+// `AgentConversationRow` only re-renders when its own props actually change.
+function AgentRow({
   agent,
+  model,
   isMobileLibrary,
   isSelected,
   onSelect,
   onHover,
   onContextMenu,
 }: AgentRowProps) {
-  const lastMessage = useChatHistoryStore((state) => {
-    if (isMobileLibrary) return undefined;
-    return state.previewLastMessages[agentHistoryKey(agent.agent_id)];
-  });
-
   const handleClick = useCallback(() => onSelect(agent.agent_id), [onSelect, agent.agent_id]);
   const handleMouseEnter = useCallback(() => onHover(agent.agent_id), [onHover, agent.agent_id]);
 
   return (
     <AgentConversationRow
       agent={agent}
-      lastMessage={lastMessage}
+      lastMessage={model?.lastMessage}
       showMetadataOnly={isMobileLibrary}
       isSelected={isSelected}
+      status={model?.status}
+      isLocal={model?.isLocal}
+      busy={model?.busy}
+      loopActivity={model?.loopActivity ?? null}
+      isPinned={model?.isPinned}
       onClick={handleClick}
       onContextMenu={onContextMenu}
       onMouseEnter={handleMouseEnter}
@@ -475,18 +477,26 @@ export function AgentList({ mode = "default" }: AgentListProps) {
     });
   }, [visibleSortedAgents, searchQuery]);
 
+  // Resolve every row's live state (avatar status, busy, loop, pin, preview)
+  // once at the list level so the rows themselves carry no store
+  // subscriptions and stay cheap to (re-)mount on a pane switch.
+  const rowModels = useAgentRowModels(filteredAgents, {
+    includePreview: !isMobileLibrary,
+  });
+
   // Map agents to the shared `LeftMenuTree`'s custom-row variant: the tree
   // owns layout, virtualization, the overlay scrollbar, and the reveal
   // cascade, while each row stays the rich `AgentConversationRow`. Built
-  // fresh each render (not memoized) so each row instance re-reads its own
-  // store-backed preview; the row itself is memoized, so this stays cheap.
+  // fresh each render (not memoized) so rows pick up new model values; the
+  // memoized row bails unless its own props changed.
   const entries: LeftMenuEntry[] = filteredAgents.map((agent) => ({
     kind: "custom",
     id: agent.agent_id,
     estimatedHeight: AGENT_ROW_ESTIMATED_HEIGHT,
     content: (
-      <AgentConversationRowWithHistory
+      <AgentRow
         agent={agent}
+        model={rowModels.get(agent.agent_id)}
         isMobileLibrary={isMobileLibrary}
         isSelected={agent.agent_id === agentId}
         onSelect={handleAgentRowClick}

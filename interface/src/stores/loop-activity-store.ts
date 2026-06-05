@@ -196,7 +196,7 @@ export const useLoopActivityStore = create<LoopActivityState>()((set, get) => ({
  * change; the map is small (bounded by live loops in the UI).
  * ------------------------------------------------------------------ */
 
-function aggregateRows(rows: LoopRow[]): LoopActivityPayload | null {
+export function aggregateRows(rows: LoopRow[]): LoopActivityPayload | null {
   if (rows.length === 0) return null;
   const active = rows.filter((r) => isLoopActivityActive(r.activity.status));
   if (active.length === 0) {

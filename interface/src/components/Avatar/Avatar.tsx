@@ -48,7 +48,7 @@ export function Avatar({ avatarUrl, name, type, size, status, isLocal, busy, cla
     >
       <div className={styles.avatar} data-agent={isAgent} data-team={isTeam}>
         {showImage ? (
-          <img src={avatarUrl} alt={name ?? type} onError={() => setBroken(true)} />
+          <img src={avatarUrl} alt={name ?? type} decoding="async" onError={() => setBroken(true)} />
         ) : (
           fallback
         )}

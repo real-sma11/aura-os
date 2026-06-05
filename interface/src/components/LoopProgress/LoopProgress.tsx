@@ -120,6 +120,39 @@ export function LoopProgress({
   className,
 }: LoopProgressProps) {
   const activity = useActivity(source);
+  return (
+    <LoopProgressView
+      activity={activity}
+      size={size}
+      strokeRatio={strokeRatio}
+      label={label}
+      className={className}
+    />
+  );
+}
+
+interface LoopProgressViewProps {
+  /** Pre-resolved activity (e.g. from a batched list-level selector). */
+  activity: LoopActivityPayload | null;
+  size?: number;
+  strokeRatio?: number;
+  label?: string;
+  className?: string;
+}
+
+/**
+ * Pure presentational form of {@link LoopProgress}: takes an already-resolved
+ * `activity` and subscribes to nothing. Use this from rows whose activity is
+ * supplied by a batched list-level store read so each row carries no
+ * loop-activity subscription of its own.
+ */
+export function LoopProgressView({
+  activity,
+  size = 14,
+  strokeRatio = 0.14,
+  label,
+  className,
+}: LoopProgressViewProps) {
   const renderable = activity && isLoopActivityActive(activity.status);
 
   const geom = useMemo(() => {

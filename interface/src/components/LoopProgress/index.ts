@@ -1,1 +1,1 @@
-export { LoopProgress } from "./LoopProgress";
+export { LoopProgress, LoopProgressView } from "./LoopProgress";
