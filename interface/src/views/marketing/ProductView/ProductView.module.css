@@ -143,11 +143,20 @@
  * centered; `.orb` then stretches to fill the stage as its own
  * positioning context.
  */
-.orbStage {
+.productView .orbStage {
   /* Let the lifted/hovered marquee cards overflow the stage box
      without being clipped — the orb video has its own clip box
      (`.orbVideoClip`) so the decorative loop is still contained. */
   overflow: visible;
+  /* Full-bleed the orb video + agent marquee out to the shell edges by
+     cancelling the shared `.firstScreen` horizontal gutter
+     (`var(--space-4, 16px)` left/right). Only the `/agents` stage breaks
+     out — the hero band keeps the gutter, and `/code` (same shared
+     `MarketingFirstScreen`) is untouched. The compound `.productView`
+     selector outranks `MarketingFirstScreen`'s `.stage { width: 100% }`
+     regardless of stylesheet order so the width override always wins. */
+  margin-inline: calc(-1 * var(--space-4, 16px));
+  width: calc(100% + 2 * var(--space-4, 16px));
 }
 
 .orb {
