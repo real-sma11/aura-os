@@ -102,10 +102,11 @@ const FRAGMENT_SHADER = /* glsl */ `
     return 130.0 * dot(m, g);
   }
 
+  // Fewer octaves => smoother, larger-scale shapes (less busy detail).
   float fbm(vec2 p){
     float v = 0.0;
     float amp = 0.5;
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 3; i++) {
       v += amp * snoise(p);
       p *= 2.0;
       amp *= 0.5;
@@ -116,40 +117,38 @@ const FRAGMENT_SHADER = /* glsl */ `
   void main() {
     vec2 uv = gl_FragCoord.xy / uResolution.xy;
     float aspect = uResolution.x / max(uResolution.y, 1.0);
-    vec2 p = vec2(uv.x * aspect, uv.y) * 1.6;
+    // Lower frequency => much larger, gentler blobs.
+    vec2 p = vec2(uv.x * aspect, uv.y) * 0.7;
 
-    float t = uTime * 0.06;
+    // Clearly perceptible (but still slow) drift.
+    float t = uTime * 0.22;
 
-    // Two-stage domain warp for organic, slow-moving flow.
+    // Two-stage domain warp for organic, flowing motion.
     vec2 q = vec2(
-      fbm(p + vec2(0.0, t)),
-      fbm(p + vec2(5.2, 1.3 - t))
+      fbm(p + vec2(0.0, 0.20 * t)),
+      fbm(p + vec2(5.2, 1.3 - 0.20 * t))
     );
     vec2 r = vec2(
-      fbm(p + 1.5 * q + vec2(1.7, 9.2) + 0.15 * t),
-      fbm(p + 1.5 * q + vec2(8.3, 2.8) - 0.12 * t)
+      fbm(p + 1.2 * q + vec2(1.7, 9.2) + 0.30 * t),
+      fbm(p + 1.2 * q + vec2(8.3, 2.8) - 0.26 * t)
     );
-    float f = fbm(p + 1.5 * r);
+    float f = fbm(p + 1.2 * r);
 
     float n = clamp(f * 0.5 + 0.5, 0.0, 1.0);
 
-    // Palette from the base tint: a darker trough and a brighter,
-    // slightly hue-shifted ridge so the field reads as soft moving
-    // light over the persona color rather than flat noise.
+    // Palette from the base tint: a gentle trough-to-ridge ramp with a
+    // faint hue lift so the field reads as soft moving light over the
+    // persona color. Low contrast keeps the pattern subtle.
     vec3 base = uColor;
-    vec3 dark = base * 0.55;
-    vec3 bright = clamp(base * 1.9 + vec3(0.10, 0.02, 0.18), 0.0, 1.0);
+    vec3 dark = base * 0.82;
+    vec3 bright = clamp(base * 1.32 + vec3(0.05, 0.01, 0.09), 0.0, 1.0);
 
-    vec3 col = mix(dark, base, smoothstep(0.0, 0.6, n));
-    col = mix(col, bright, smoothstep(0.62, 1.0, n) * 0.85);
-
-    // Faint flow-aligned highlight from the warp field for extra depth.
-    float ridge = smoothstep(0.55, 0.95, length(r) * 0.5);
-    col += bright * ridge * 0.06;
+    vec3 col = mix(dark, base, smoothstep(0.0, 0.65, n));
+    col = mix(col, bright, smoothstep(0.55, 1.0, n) * 0.7);
 
     // Gentle radial vignette to settle the edges.
-    float vig = smoothstep(1.25, 0.35, distance(uv, vec2(0.5)));
-    col *= mix(0.82, 1.0, vig);
+    float vig = smoothstep(1.3, 0.4, distance(uv, vec2(0.5)));
+    col *= mix(0.9, 1.0, vig);
 
     gl_FragColor = vec4(col, 1.0);
   }
