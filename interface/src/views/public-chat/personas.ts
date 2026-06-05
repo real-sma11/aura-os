@@ -121,6 +121,16 @@ export interface PersonaTheme {
    */
   readonly siteBackgroundColor: string | null;
   /**
+   * When `true`, the page background for this persona is painted by
+   * an animated WebGL flow/noise field (`FlowFieldBackground`) tinted
+   * by `siteBackgroundColor`, instead of the static `siteBackgroundUrl`
+   * `<img>`. `siteBackgroundColor` still paints underneath as the
+   * pre-GL base tint, and `siteBackgroundUrl` (when set) remains the
+   * graceful fallback if WebGL is unavailable. Optional — omit (or
+   * leave `false`) to keep the default static-image behavior.
+   */
+  readonly siteBackgroundFlow?: boolean;
+  /**
    * Strong foreground color (active / hover) for chrome that floats
    * over the persona's site background — currently the active tick
    * in `PersonaTickRail` and the hovered link in
@@ -274,6 +284,10 @@ export const PERSONAS: ReadonlyArray<Persona> = [
       // immediately on first paint and there is no dark flash
       // before the static asset finishes loading.
       siteBackgroundColor: "#2a0258",
+      // Paint this persona's page bg as an animated WebGL flow/noise
+      // field tinted by `siteBackgroundColor` rather than the static
+      // `site.png`. The image above stays as the no-WebGL fallback.
+      siteBackgroundFlow: true,
       // Pin the dark-mode `--color-text-primary` / `--color-text-
       // secondary` hex pair (sampled from `vendor/zui/src/styles/
       // themes.css` and `interface/src/styles/tokens.css`) rather

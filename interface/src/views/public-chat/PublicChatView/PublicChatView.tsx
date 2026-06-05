@@ -24,6 +24,7 @@ import {
 } from "../../../stores/public-chat-store";
 import { usePublicGateShown, usePublicPageViewed } from "../use-public-shell-analytics";
 import { ComposePanel } from "../ComposePanel";
+import { FlowFieldBackground } from "./FlowFieldBackground";
 import { CreateAgentButton } from "../CreateAgentButton";
 import { PersonaTickRail } from "../PersonaTickRail";
 import { PublicChatBubble } from "../PublicChatBubble";
@@ -538,7 +539,12 @@ export function PublicChatView(): React.ReactElement {
         data-testid="public-chat-site-bg"
         aria-hidden="true"
       >
-        {committedPersona.theme.siteBackgroundUrl ? (
+        {committedPersona.theme.siteBackgroundFlow ? (
+          <FlowFieldBackground
+            key={committedPersona.id}
+            baseColor={committedPersona.theme.siteBackgroundColor ?? "#2a0258"}
+          />
+        ) : committedPersona.theme.siteBackgroundUrl ? (
           <img
             src={committedPersona.theme.siteBackgroundUrl}
             className={styles.siteBackgroundImage}

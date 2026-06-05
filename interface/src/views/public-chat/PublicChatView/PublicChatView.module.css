@@ -89,6 +89,22 @@
 }
 
 /*
+ * Full-bleed WebGL flow-field canvas. Same footprint as
+ * `.siteBackgroundImage` — fills the `.siteBackground` wrapper so the
+ * persona's animated page bg covers the whole `.chatView` rectangle.
+ * `FlowFieldBackground` sizes the drawing buffer to the parent box, so
+ * the element just needs to stretch and stay non-interactive.
+ */
+.siteBackgroundCanvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+}
+
+/*
  * Outgoing site bg layer. Mounts on top of the (already-swapped)
  * committed `.siteBackground` for `FADE_MS + 50ms` after a persona
  * change and tweens its own opacity from 1 → 0 so the OLD persona's
