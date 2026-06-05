@@ -1,10 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, type RefObject } from "react";
-
-const ROW_SELECTOR = "[data-sidebar-list-reveal-row='true']";
-const REVEAL_DURATION_MS = 240;
-const REVEAL_STEP_MS = 24;
-const REVEAL_MAX_STAGGER_INDEX = 14;
-const REVEAL_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 
 interface SidebarListRevealOptions {
   enabled?: boolean;
@@ -12,12 +6,10 @@ interface SidebarListRevealOptions {
   revealKey?: string | number;
 }
 
-function isReducedMotion(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
+export interface SidebarListRevealState {
+  enabled: boolean;
+  epoch: number;
+  startedAt: number;
 }
 
 function hasVisibleBox(element: HTMLElement): boolean {
@@ -29,36 +21,41 @@ function getRevealSignature(itemCount: number, revealKey: string | number | unde
   return `${itemCount}:${revealKey ?? itemCount}`;
 }
 
+export function isSidebarRevealReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
 /**
- * List-owned reveal animation for sidebar rows.
+ * Creates short-lived reveal epochs for a sidebar list.
  *
- * The old implementation asked `LeftMenu` to time a `data-cascade` window for
- * descendants. That is brittle because these lists are virtualized and their
- * rows often mount after the pane becomes active. This hook waits until the
- * list's own scroll root is visible and populated, then animates the row DOM
- * nodes that are actually mounted.
+ * The list decides *when* a reveal is valid: when its scroll root is visible and
+ * populated, or when a hidden keep-alive pane becomes visible. Rows decide
+ * *how* to animate: each row component runs its own layout effect after that
+ * exact row element has mounted. That keeps virtualization and async hydration
+ * from racing a parent-level query/selector.
  */
 export function useSidebarListReveal(
   scrollRef: RefObject<HTMLElement | null>,
   { enabled = true, itemCount, revealKey }: SidebarListRevealOptions,
-): void {
+): SidebarListRevealState {
+  const [reveal, setReveal] = useState<SidebarListRevealState>({
+    enabled,
+    epoch: 0,
+    startedAt: 0,
+  });
   const lastRevealedSignatureRef = useRef<string | null>(null);
   const wasVisibleRef = useRef(false);
   const animationFrameRef = useRef<number | null>(null);
-  const animationsRef = useRef<Animation[]>([]);
 
-  const cancelAnimations = useCallback(() => {
-    for (const animation of animationsRef.current) {
-      animation.cancel();
-    }
-    animationsRef.current = [];
-  }, []);
-
-  const revealRows = useCallback(
+  const startReveal = useCallback(
     (force = false) => {
       const scrollRoot = scrollRef.current;
 
-      if (!enabled || itemCount === 0 || !scrollRoot || isReducedMotion()) {
+      if (!enabled || itemCount === 0 || !scrollRoot || isSidebarRevealReducedMotion()) {
         return;
       }
 
@@ -71,40 +68,17 @@ export function useSidebarListReveal(
         return;
       }
 
-      const rows = Array.from(scrollRoot.querySelectorAll<HTMLElement>(ROW_SELECTOR));
-      if (rows.length === 0 || typeof rows[0]?.animate !== "function") {
-        return;
-      }
-
-      cancelAnimations();
       lastRevealedSignatureRef.current = signature;
-
-      animationsRef.current = rows.map((row, index) => {
-        const animation = row.animate(
-          [
-            { opacity: 0, transform: "translateY(7px)" },
-            { opacity: 1, transform: "translateY(0)" },
-          ],
-          {
-            duration: REVEAL_DURATION_MS,
-            delay: Math.min(index, REVEAL_MAX_STAGGER_INDEX) * REVEAL_STEP_MS,
-            easing: REVEAL_EASING,
-            fill: "backwards",
-          },
-        );
-
-        animation.addEventListener(
-          "finish",
-          () => {
-            animationsRef.current = animationsRef.current.filter((item) => item !== animation);
-          },
-          { once: true },
-        );
-
-        return animation;
+      setReveal((current) => {
+        const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+        return {
+          enabled,
+          epoch: current.epoch + 1,
+          startedAt: now,
+        };
       });
     },
-    [cancelAnimations, enabled, itemCount, revealKey, scrollRef],
+    [enabled, itemCount, revealKey, scrollRef],
   );
 
   const scheduleReveal = useCallback(
@@ -115,10 +89,10 @@ export function useSidebarListReveal(
 
       animationFrameRef.current = window.requestAnimationFrame(() => {
         animationFrameRef.current = null;
-        revealRows(force);
+        startReveal(force);
       });
     },
-    [revealRows],
+    [startReveal],
   );
 
   useLayoutEffect(() => {
@@ -154,8 +128,9 @@ export function useSidebarListReveal(
       if (animationFrameRef.current !== null) {
         window.cancelAnimationFrame(animationFrameRef.current);
       }
-      cancelAnimations();
     },
-    [cancelAnimations],
+    [],
   );
+
+  return reveal;
 }

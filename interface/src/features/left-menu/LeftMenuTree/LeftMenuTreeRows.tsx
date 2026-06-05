@@ -10,6 +10,8 @@ import type {
   LeftMenuGroupEntry,
   LeftMenuLeafEntry,
 } from "../types";
+import { SidebarRevealRow } from "../SidebarRevealRow";
+import type { SidebarListRevealState } from "../use-sidebar-list-reveal";
 import styles from "./LeftMenuTree.module.css";
 
 export type RootReorderState = {
@@ -196,21 +198,24 @@ export function StaticEntries({
   ariaLabel,
   entries,
   rootReorderState,
+  reveal,
 }: {
   ariaLabel: string;
   entries: LeftMenuEntry[];
   rootReorderState?: RootReorderState;
+  reveal: SidebarListRevealState;
 }) {
   return (
     <div className={styles.entriesList} role="tree" aria-label={ariaLabel}>
-      {entries.map((entry) => (
-        <div
+      {entries.map((entry, index) => (
+        <SidebarRevealRow
           key={entry.id}
+          reveal={reveal}
+          revealIndex={index}
           className={styles.cascadeInner}
-          data-sidebar-list-reveal-row="true"
         >
           <LeftMenuEntryRow entry={entry} rootReorderState={rootReorderState} />
-        </div>
+        </SidebarRevealRow>
       ))}
     </div>
   );

@@ -30,7 +30,11 @@ import {
   useSessionsListStore,
 } from "../../../stores/sessions-list-store";
 import { useSidebarSearch } from "../../../hooks/use-sidebar-search";
-import { useSidebarListReveal } from "../../../features/left-menu/use-sidebar-list-reveal";
+import { SidebarRevealRow } from "../../../features/left-menu/SidebarRevealRow";
+import {
+  type SidebarListRevealState,
+  useSidebarListReveal,
+} from "../../../features/left-menu/use-sidebar-list-reveal";
 import { useOverlayScrollbar } from "../../../shared/hooks/use-overlay-scrollbar";
 import { createAgentChatHandoffState } from "../../../utils/chat-handoff";
 import { standaloneAgentHandoffTarget } from "../../../utils/chat-handoff";
@@ -153,6 +157,7 @@ interface VirtualizedAgentRowsProps {
   onSelect: (agentId: string) => void;
   onHover: (agentId: string) => void;
   onContextMenu: (e: React.MouseEvent) => void;
+  reveal: SidebarListRevealState;
 }
 
 // Windowed agent list for the desktop sidebar. Only the visible rows (plus a
@@ -169,6 +174,7 @@ function VirtualizedAgentRows({
   onSelect,
   onHover,
   onContextMenu,
+  reveal,
 }: VirtualizedAgentRowsProps) {
   const virtualizer = useVirtualizer({
     count: agents.length,
@@ -189,11 +195,12 @@ function VirtualizedAgentRows({
   if (virtualItems.length === 0) {
     return (
       <div className={styles.sidebarEntries}>
-        {agents.map((agent) => (
-          <div
+        {agents.map((agent, index) => (
+          <SidebarRevealRow
             key={agent.agent_id}
+            reveal={reveal}
+            revealIndex={index}
             className={styles.cascadeInner}
-            data-sidebar-list-reveal-row="true"
           >
             <AgentConversationRowWithHistory
               agent={agent}
@@ -203,7 +210,7 @@ function VirtualizedAgentRows({
               onHover={onHover}
               onContextMenu={onContextMenu}
             />
-          </div>
+          </SidebarRevealRow>
         ))}
       </div>
     );
@@ -214,7 +221,7 @@ function VirtualizedAgentRows({
       className={styles.virtualListContainer}
       style={{ height: virtualizer.getTotalSize() }}
     >
-      {virtualItems.map((item) => {
+      {virtualItems.map((item, index) => {
         const agent = agents[item.index];
         if (!agent) return null;
         return (
@@ -225,7 +232,11 @@ function VirtualizedAgentRows({
             className={styles.virtualRow}
             style={{ transform: `translateY(${item.start}px)` }}
           >
-            <div className={styles.cascadeInner} data-sidebar-list-reveal-row="true">
+            <SidebarRevealRow
+              reveal={reveal}
+              revealIndex={index}
+              className={styles.cascadeInner}
+            >
               <AgentConversationRowWithHistory
                 agent={agent}
                 isMobileLibrary={isMobileLibrary}
@@ -234,7 +245,7 @@ function VirtualizedAgentRows({
                 onHover={onHover}
                 onContextMenu={onContextMenu}
               />
-            </div>
+            </SidebarRevealRow>
           </div>
         );
       })}
@@ -579,7 +590,7 @@ export function AgentList({ mode = "default" }: AgentListProps) {
     [filteredAgents],
   );
 
-  useSidebarListReveal(scrollRef, {
+  const reveal = useSidebarListReveal(scrollRef, {
     enabled: isDesktopSidebar,
     itemCount: filteredAgents.length,
     revealKey,
@@ -662,6 +673,7 @@ export function AgentList({ mode = "default" }: AgentListProps) {
               onSelect={handleAgentRowClick}
               onHover={handleHoverPrefetch}
               onContextMenu={handleContextMenu}
+              reveal={reveal}
             />
           </div>
           <div className={styles.scrollTrack}>

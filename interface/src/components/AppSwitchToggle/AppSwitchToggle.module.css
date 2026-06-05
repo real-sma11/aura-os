@@ -44,7 +44,7 @@
   --sw-text: #8a8d96;
   --sw-text-active: #2b2e36;
   --sw-plate-border-dark: rgba(0, 0, 0, 0.18);
-  --sw-plate-border-light: rgba(255, 255, 255, 0.9);
+  --sw-plate-border-light: rgba(255, 255, 255, 0.45);
 }
 
 :global([data-theme="dark"]) .wrap {
@@ -62,7 +62,7 @@
   --sw-text: rgba(255, 255, 255, 0.7);
   --sw-text-active: rgba(255, 255, 255, 0.92);
   --sw-plate-border-dark: rgba(0, 0, 0, 0.7);
-  --sw-plate-border-light: rgba(255, 255, 255, 0.12);
+  --sw-plate-border-light: rgba(255, 255, 255, 0.06);
 }
 
 .plate {

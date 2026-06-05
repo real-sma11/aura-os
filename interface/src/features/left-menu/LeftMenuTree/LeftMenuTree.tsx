@@ -12,7 +12,8 @@ import { createPortal } from "react-dom";
 import { ChevronRight } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useOverlayScrollbar } from "../../../shared/hooks/use-overlay-scrollbar";
-import { useSidebarListReveal } from "../use-sidebar-list-reveal";
+import { SidebarRevealRow } from "../SidebarRevealRow";
+import { type SidebarListRevealState, useSidebarListReveal } from "../use-sidebar-list-reveal";
 import type { LeftMenuEntry, LeftMenuGroupEntry } from "../types";
 import {
   LeftMenuEntryRow,
@@ -171,11 +172,13 @@ function VirtualizedEntries({
   entries,
   scrollRef,
   rootReorderState,
+  reveal,
 }: {
   ariaLabel: string;
   entries: LeftMenuEntry[];
   scrollRef: RefObject<HTMLDivElement | null>;
   rootReorderState?: RootReorderState;
+  reveal: SidebarListRevealState;
 }) {
   const virtualizer = useVirtualizer({
     count: entries.length,
@@ -196,6 +199,7 @@ function VirtualizedEntries({
         ariaLabel={ariaLabel}
         entries={entries}
         rootReorderState={rootReorderState}
+        reveal={reveal}
       />
     );
   }
@@ -206,7 +210,7 @@ function VirtualizedEntries({
         className={styles.virtualListContainer}
         style={{ height: virtualizer.getTotalSize() }}
       >
-        {virtualItems.map((item) => {
+        {virtualItems.map((item, index) => {
           const entry = entries[item.index];
           if (!entry) return null;
           return (
@@ -217,9 +221,13 @@ function VirtualizedEntries({
               className={styles.virtualRow}
               style={{ transform: `translateY(${item.start}px)` }}
             >
-              <div className={styles.cascadeInner} data-sidebar-list-reveal-row="true">
+              <SidebarRevealRow
+                reveal={reveal}
+                revealIndex={index}
+                className={styles.cascadeInner}
+              >
                 <LeftMenuEntryRow entry={entry} rootReorderState={rootReorderState} />
-              </div>
+              </SidebarRevealRow>
             </div>
           );
         })}
@@ -239,7 +247,7 @@ export function LeftMenuTree({
   const { thumbStyle, visible, onThumbPointerDown } = useOverlayScrollbar(scrollRef);
   const shouldVirtualize = entries.length > VIRTUALIZE_AFTER;
   const revealKey = useMemo(() => entries.map((entry) => entry.id).join("|"), [entries]);
-  useSidebarListReveal(scrollRef, {
+  const reveal = useSidebarListReveal(scrollRef, {
     itemCount: entries.length,
     revealKey,
   });
@@ -417,12 +425,14 @@ export function LeftMenuTree({
             entries={displayEntries}
             scrollRef={scrollRef}
             rootReorderState={rootReorderState}
+            reveal={reveal}
           />
         ) : (
           <StaticEntries
             ariaLabel={ariaLabel}
             entries={displayEntries}
             rootReorderState={rootReorderState}
+            reveal={reveal}
           />
         )}
       </div>

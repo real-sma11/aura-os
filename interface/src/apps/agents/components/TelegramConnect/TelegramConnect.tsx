@@ -208,7 +208,7 @@ export function TelegramConnect({
           ) : needsRelink ? (
             "Reconnect"
           ) : (
-            "Connect to Telegram"
+            "Connect"
           )}
         </Button>
       </div>

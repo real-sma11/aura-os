@@ -61,7 +61,7 @@
   width: 100%;
 }
 
-/* Plain wrapper used by `useSidebarListReveal` to animate the mounted row DOM
+/* Plain wrapper used by `SidebarRevealRow` to animate the mounted row DOM
    nodes directly. The reveal is owned by the list, not by an ancestor selector,
    so async hydration and hidden-pane switches cannot miss the timing window. */
 .cascadeInner {
