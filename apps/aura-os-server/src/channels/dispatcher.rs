@@ -35,6 +35,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use aura_os_auth::AuthService;
 use aura_os_channels::{ChannelError, ChannelLink, DispatchOutcome, MessageDispatcher};
+use aura_os_core::LATEST_FRONTIER_MODEL;
 use futures_util::StreamExt;
 use serde_json::json;
 use tracing::debug;
@@ -131,13 +132,17 @@ impl MessageDispatcher for ServerMessageDispatcher {
             link.agent_id
         );
 
-        // Mirror the `SendChatRequest` shape used by `cross_agent_reply`:
-        // only `content` is meaningful here; everything else defaults so the
-        // server resolves the agent's own model / latest session.
+        // The external-chat surface has no client-side model picker, and a
+        // linked agent frequently carries no `default_model` of its own — so
+        // leaving `model` null makes the harness reject the turn with
+        // "model name must not be empty". Pin the latest frontier model at a
+        // medium reasoning effort for every Telegram turn (mirrors how the
+        // public demo pins a server-side model for its picker-less surface).
         let body = json!({
             "content": user_text,
             "action": null,
-            "model": null,
+            "model": LATEST_FRONTIER_MODEL,
+            "reasoning_effort": "medium",
             "commands": null,
             "project_id": null,
             "attachments": null,
@@ -234,7 +239,7 @@ async fn accumulate_sse_reply(response: reqwest::Response) -> Result<String, Cha
                         .get("message")
                         .and_then(|m| m.as_str())
                         .unwrap_or("agent stream reported an error");
-                    return Err(ChannelError::Transport(message.to_string()));
+                    return Err(ChannelError::Agent(message.to_string()));
                 }
                 _ => {}
             }

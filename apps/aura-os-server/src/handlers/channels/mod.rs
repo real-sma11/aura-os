@@ -120,6 +120,7 @@ pub(crate) async fn link_telegram(
         user_id: auth_session.user_id.clone(),
         access_token: jwt.clone(),
         agent_id: agent_id.to_string(),
+        agent_name: agent.name.clone(),
         org_id: agent.org_id.map(|org_id| org_id.to_string()),
         created_at: now,
         expires_at: now + chrono::Duration::minutes(PENDING_LINK_TTL_MINUTES),

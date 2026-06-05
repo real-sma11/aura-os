@@ -5,6 +5,7 @@ use chrono::Utc;
 
 use crate::connector::ChatConnector;
 use crate::dispatcher::{DispatchOutcome, MessageDispatcher};
+use crate::error::ChannelError;
 use crate::inbound::{InboundHandler, InboundMessage};
 use crate::kind::ChannelKind;
 use crate::records::ChannelLink;
@@ -63,6 +64,7 @@ impl BridgeRuntime {
                     user_id: pending.user_id,
                     access_token: pending.access_token,
                     agent_id: pending.agent_id,
+                    agent_name: pending.agent_name,
                     org_id: pending.org_id,
                     created_at: Utc::now(),
                     needs_relink: false,
@@ -73,11 +75,12 @@ impl BridgeRuntime {
                         .await;
                     return;
                 }
-                self.reply(
-                    chat_id,
-                    "Connected. You can now chat with your agent here.",
-                )
-                .await;
+                let connected = if link.agent_name.trim().is_empty() {
+                    "Connected. You can now chat with your agent here.".to_string()
+                } else {
+                    format!("Connected to {}. You can now chat here.", link.agent_name)
+                };
+                self.reply(chat_id, &connected).await;
             }
             Ok(None) => {
                 self.reply(
@@ -133,8 +136,16 @@ impl BridgeRuntime {
             }
             Err(e) => {
                 tracing::error!(error = %e, chat_id, "agent dispatch failed");
-                self.reply(chat_id, "Sorry, something went wrong reaching your agent.")
-                    .await;
+                // Surface agent-reported failures (e.g. harness errors) to the
+                // user verbatim so they aren't left guessing; keep infra/store
+                // transport errors behind the generic apology.
+                let reply = match &e {
+                    ChannelError::Agent(msg) => {
+                        format!("Your agent ran into a problem:\n\n{msg}")
+                    }
+                    _ => "Sorry, something went wrong reaching your agent.".to_string(),
+                };
+                self.reply(chat_id, &reply).await;
             }
         }
     }

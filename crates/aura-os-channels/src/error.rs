@@ -11,6 +11,8 @@ pub enum ChannelError {
     Store(String),
     #[error("transport error: {0}")]
     Transport(String),
+    #[error("agent error: {0}")]
+    Agent(String),
     #[error("not found")]
     NotFound,
     #[error("serde error: {0}")]
