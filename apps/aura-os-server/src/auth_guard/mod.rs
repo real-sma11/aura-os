@@ -91,7 +91,9 @@ pub(crate) async fn require_verified_session(
     // client's app version / platform (set by the `X-App-Version` /
     // `X-App-Platform` headers) so these events carry the same
     // `app_version` the client SDK reports — without them Mixpanel shows
-    // server-emitted events as `app_version = "(not set)"`.
+    // server-emitted events as `app_version = "(not set)"`. Also forward
+    // the end-user's IP (from `X-Forwarded-For` / `X-Real-IP`) so Mixpanel
+    // geolocates the event to the user's country rather than the server's.
     if let Some(ref mp) = state.mixpanel {
         let app_version = req
             .headers()
@@ -101,7 +103,8 @@ pub(crate) async fn require_verified_session(
             .headers()
             .get("x-app-platform")
             .and_then(|v| v.to_str().ok());
-        mp.track_session_active(&session.user_id, app_version, platform);
+        let client_ip = client_ip_from_headers(req.headers());
+        mp.track_session_active(&session.user_id, app_version, platform, client_ip.as_deref());
     }
 
     req.extensions_mut().insert(AuthJwt(token));
@@ -120,6 +123,32 @@ pub(crate) async fn require_verified_session(
             .insert(AUTH_DEGRADED_HEADER, HeaderValue::from_static("true"));
     }
     Ok(response)
+}
+
+/// Best-effort end-user IP for Mixpanel geolocation. Reads
+/// `X-Forwarded-For` (first hop) then `X-Real-IP`. Returns `None` when no
+/// usable public IP is present (including loopback), so we never ask
+/// Mixpanel to geolocate the server itself — those events should simply
+/// carry no geo rather than a misleading one.
+fn client_ip_from_headers(headers: &axum::http::HeaderMap) -> Option<String> {
+    let parse = |raw: &str| raw.trim().parse::<std::net::IpAddr>().ok();
+
+    let candidate = headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.split(',').next())
+        .and_then(parse)
+        .or_else(|| {
+            headers
+                .get("x-real-ip")
+                .and_then(|v| v.to_str().ok())
+                .and_then(parse)
+        })?;
+
+    if candidate.is_loopback() {
+        return None;
+    }
+    Some(candidate.to_string())
 }
 
 #[cfg(test)]

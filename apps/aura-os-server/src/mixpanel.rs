@@ -45,11 +45,20 @@ impl MixpanelTracker {
     /// are attached so the server-emitted `session_active` carries the
     /// same `app_version` super-property the client SDK sets — otherwise
     /// Mixpanel reports these events as `app_version = "(not set)"`.
+    ///
+    /// `client_ip` is the end-user's IP (from `X-Forwarded-For` /
+    /// `X-Real-IP`). When present it is attached as the `ip` property so
+    /// Mixpanel geolocates the event to the *user's* country
+    /// (`$country_code` / `$region` / `$city`) instead of the server's
+    /// IP. The IP is used transiently by Mixpanel for geo lookup and is
+    /// not persisted as an event property (matching the client SDK's
+    /// `ip: true` behavior).
     pub(crate) fn track_session_active(
         &self,
         user_id: &str,
         app_version: Option<&str>,
         platform: Option<&str>,
+        client_ip: Option<&str>,
     ) {
         let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
         let key = format!("{user_id}:{today}");
@@ -70,6 +79,9 @@ impl MixpanelTracker {
         }
         if let Some(platform) = sanitize_client_header(platform) {
             properties.insert("platform".to_string(), json!(platform));
+        }
+        if let Some(ip) = sanitize_client_header(client_ip) {
+            properties.insert("ip".to_string(), json!(ip));
         }
 
         self.enqueue_event("session_active", user_id.to_string(), properties);
@@ -254,6 +266,24 @@ mod tests {
         assert_eq!(payload[0]["properties"]["mp_lib"], "rust-server");
         assert_eq!(payload[0]["properties"]["session_id"], "session-1");
         assert_eq!(payload[0]["properties"]["reused"], true);
+    }
+
+    #[test]
+    fn client_ip_property_is_gated_on_sanitized_value() {
+        // `track_session_active` only inserts the `ip` property when the
+        // sanitized client IP is non-empty, so a present IP is recorded
+        // and an absent one is omitted (no misleading geo).
+        let mut present = Map::new();
+        if let Some(ip) = sanitize_client_header(Some("203.0.113.7")) {
+            present.insert("ip".to_string(), json!(ip));
+        }
+        assert_eq!(present.get("ip"), Some(&json!("203.0.113.7")));
+
+        let mut absent = Map::new();
+        if let Some(ip) = sanitize_client_header(None) {
+            absent.insert("ip".to_string(), json!(ip));
+        }
+        assert!(absent.get("ip").is_none());
     }
 
     #[test]

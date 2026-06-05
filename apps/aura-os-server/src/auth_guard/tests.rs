@@ -150,6 +150,46 @@ fn extract_token_empty_bearer_value() {
     assert_eq!(extract_request_token(&req).unwrap(), "");
 }
 
+// --- Client IP extraction tests (Mixpanel geolocation) ---
+
+fn headers_with(pairs: &[(&str, &str)]) -> axum::http::HeaderMap {
+    let mut headers = axum::http::HeaderMap::new();
+    for (name, value) in pairs {
+        headers.insert(
+            axum::http::HeaderName::from_bytes(name.as_bytes()).unwrap(),
+            axum::http::HeaderValue::from_str(value).unwrap(),
+        );
+    }
+    headers
+}
+
+#[test]
+fn client_ip_prefers_first_forwarded_hop() {
+    let headers = headers_with(&[("x-forwarded-for", "203.0.113.7, 10.0.0.1")]);
+    assert_eq!(
+        client_ip_from_headers(&headers),
+        Some("203.0.113.7".to_string())
+    );
+}
+
+#[test]
+fn client_ip_falls_back_to_real_ip() {
+    let headers = headers_with(&[("x-real-ip", "198.51.100.42")]);
+    assert_eq!(
+        client_ip_from_headers(&headers),
+        Some("198.51.100.42".to_string())
+    );
+}
+
+#[test]
+fn client_ip_drops_loopback_and_missing() {
+    assert_eq!(
+        client_ip_from_headers(&headers_with(&[("x-forwarded-for", "127.0.0.1")])),
+        None
+    );
+    assert_eq!(client_ip_from_headers(&axum::http::HeaderMap::new()), None);
+}
+
 // --- Validation cache tests ---
 
 fn make_cache() -> crate::state::ValidationCache {
