@@ -150,6 +150,7 @@ jobs:
           DEPOT_CACHE_TOKEN: ${{ secrets.DEPOT_CACHE_TOKEN }}
         run: |
           echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "SCCACHE_IGNORE_SERVER_IO_ERROR=1" >> "$GITHUB_ENV"
           if [ -n "$DEPOT_CACHE_TOKEN" ]; then
             echo "SCCACHE_WEBDAV_ENDPOINT=https://cache.depot.dev" >> "$GITHUB_ENV"
             echo "SCCACHE_WEBDAV_TOKEN=$DEPOT_CACHE_TOKEN" >> "$GITHUB_ENV"
@@ -271,6 +272,7 @@ jobs:
           DEPOT_CACHE_TOKEN: ${{ secrets.DEPOT_CACHE_TOKEN }}
         run: |
           echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "SCCACHE_IGNORE_SERVER_IO_ERROR=1" >> "$GITHUB_ENV"
           if [ -n "$DEPOT_CACHE_TOKEN" ]; then
             echo "SCCACHE_WEBDAV_ENDPOINT=https://cache.depot.dev" >> "$GITHUB_ENV"
             echo "SCCACHE_WEBDAV_TOKEN=$DEPOT_CACHE_TOKEN" >> "$GITHUB_ENV"
@@ -554,6 +556,11 @@ jobs:
             echo "Retrying packaging after transient platform packaging failure (attempt ${attempt}/${max_attempts})..."
             cleanup_retryable_packaging_failure
           done
+
+      - name: Notarize and validate macOS DMG
+        if: matrix.target == 'macos'
+        shell: bash
+        run: bash infra/scripts/release/macos-dmg-notarize-validate.sh --notarize "$AURA_RELEASE_DIR"
 
       - name: Collect artifacts
         id: artifacts
