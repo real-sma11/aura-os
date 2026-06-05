@@ -52,6 +52,18 @@
 .heroBand :global(.pageHero.pageHeroCentered) {
   min-height: 0;
   width: 100%;
+  /*
+   * PageHero paints its own opaque `--marketing-section-bg`. Inside the
+   * first-screen band that opaque fill would cover the top of the
+   * `/agents` orb video where it rises out of the stage into the band,
+   * hard-cutting the orb's top gradient and leaving the top/bottom
+   * fades asymmetric. Making the hero background transparent lets the
+   * orb's faded top edge show through so it mirrors the bottom fade. The
+   * band still sits on the identical `--marketing-section-bg` painted by
+   * `.firstScreen`, so this is a no-op on `/code` (no orb behind it) and
+   * preserves the exact same backdrop color on both pages.
+   */
+  background: transparent;
 }
 
 .heroBand :global(.pageHeroContentCentered) {
