@@ -98,6 +98,44 @@ function run(command, args, options = {}) {
   }
 }
 
+export function normalizeSccacheWrapperPath(wrapperPath, platform = process.platform) {
+  if (!wrapperPath || platform !== "win32") {
+    return wrapperPath;
+  }
+
+  let normalized = wrapperPath.replaceAll("/", "\\");
+  if (!normalized.toLowerCase().endsWith(".exe")) {
+    normalized = `${normalized}.exe`;
+  }
+  return path.win32.normalize(normalized);
+}
+
+function sidecarBuildEnv() {
+  const env = { ...process.env };
+  if (env.SCCACHE_PATH && env.RUSTC_WRAPPER === "sccache") {
+    env.RUSTC_WRAPPER = normalizeSccacheWrapperPath(env.SCCACHE_PATH);
+  }
+  if (env.RUSTC_WRAPPER && !env.CARGO_BUILD_RUSTC_WRAPPER) {
+    env.CARGO_BUILD_RUSTC_WRAPPER = env.RUSTC_WRAPPER;
+  }
+  return env;
+}
+
+function printBuildEnv(env) {
+  console.log(JSON.stringify({
+    sidecarBuildEnv: {
+      rustcSet: Boolean(env.RUSTC),
+      cargoSet: Boolean(env.CARGO),
+      rustcWrapperSet: Boolean(env.RUSTC_WRAPPER),
+      cargoBuildRustcWrapperSet: Boolean(env.CARGO_BUILD_RUSTC_WRAPPER),
+      sccachePathSet: Boolean(env.SCCACHE_PATH),
+      cargoTargetDirSet: Boolean(env.CARGO_TARGET_DIR),
+      sccacheGhaEnabledSet: Boolean(env.SCCACHE_GHA_ENABLED),
+      sccacheWebdavEndpointSet: Boolean(env.SCCACHE_WEBDAV_ENDPOINT),
+    },
+  }, null, 2));
+}
+
 function parseArgs(argv) {
   return {
     checkOnly: argv.includes("--check"),
@@ -131,6 +169,9 @@ function main() {
     return;
   }
 
+  const buildEnv = sidecarBuildEnv();
+  printBuildEnv(buildEnv);
+
   run(
     "cargo",
     [
@@ -145,7 +186,7 @@ function main() {
     ],
     {
       cwd: harnessDir,
-      env: process.env,
+      env: buildEnv,
     },
   );
 
