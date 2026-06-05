@@ -85,15 +85,23 @@
   border-color: var(--color-error, var(--status-failed));
 }
 
+.group,
 .pairedGroup {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  padding-top: var(--space-1);
+  padding-top: var(--space-2);
   margin-top: var(--space-1);
   border-top: 1px solid var(--color-border);
 }
 
+.group:first-child {
+  margin-top: 0;
+  padding-top: var(--space-1);
+  border-top: none;
+}
+
+.groupHeading,
 .pairedHeading {
   display: block;
   font-weight: var(--font-medium);

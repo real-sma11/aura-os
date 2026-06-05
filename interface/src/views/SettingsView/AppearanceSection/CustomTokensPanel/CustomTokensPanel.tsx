@@ -38,6 +38,61 @@ const PAIRED_TOKENS: ReadonlySet<EditableToken> = new Set<EditableToken>([
 ]);
 
 /**
+ * Logical sections for the single-value token rows, so the editor reads as a
+ * structured list instead of one long column. Paired tokens (Modal
+ * background) render in their own section after these. Any editable token not
+ * listed here is appended to a trailing "Other" group so new tokens never
+ * silently disappear.
+ */
+const TOKEN_GROUPS: { label: string; tokens: EditableToken[] }[] = [
+  {
+    label: "Borders",
+    tokens: [
+      "--color-border",
+      "--color-border-main-panel",
+      "--color-border-chrome",
+      "--color-card-line",
+    ],
+  },
+  {
+    label: "Surfaces",
+    tokens: [
+      "--color-surface",
+      "--color-elevated",
+      "--color-surface-tint",
+      "--color-elevated-tint",
+      "--color-sidebar-bg",
+      "--color-sidekick-bg",
+      "--color-titlebar-bg",
+    ],
+  },
+  {
+    label: "Accent",
+    tokens: [
+      "--color-accent",
+      "--color-accent-hover",
+      "--color-accent-muted",
+      "--color-accent-contrast",
+    ],
+  },
+];
+
+const GROUPED_TOKENS: ReadonlySet<EditableToken> = new Set(
+  TOKEN_GROUPS.flatMap((group) => group.tokens),
+);
+
+// Defensive: any single-value token not explicitly grouped lands in "Other"
+// so adding a new editable token can never make it vanish from the editor.
+const UNGROUPED_TOKENS: EditableToken[] = EDITABLE_TOKENS.filter(
+  (token) => !PAIRED_TOKENS.has(token) && !GROUPED_TOKENS.has(token),
+);
+
+const RESOLVED_TOKEN_GROUPS: { label: string; tokens: EditableToken[] }[] =
+  UNGROUPED_TOKENS.length > 0
+    ? [...TOKEN_GROUPS, { label: "Other", tokens: UNGROUPED_TOKENS }]
+    : TOKEN_GROUPS;
+
+/**
  * `<input type="color">` only supports `#rrggbb`, so derive a safe
  * starter value whenever the token is unset or the current override is
  * a non-hex CSS color. Fallback is mid-grey — it's only shown in the
@@ -289,18 +344,25 @@ export function CustomTokensPanel() {
       )}
 
       <div className={styles.rows}>
-        {EDITABLE_TOKENS.filter((token) => !PAIRED_TOKENS.has(token)).map(
-          (token) => (
-            <TokenRow
-              key={token}
-              token={token}
-              label={TOKEN_LABELS[token]}
-              currentValue={overrides[token]}
-              onChange={(value) => setToken(token, value)}
-              disabled={readOnly}
-            />
-          ),
-        )}
+        {RESOLVED_TOKEN_GROUPS.map((group) => (
+          <div key={group.label} className={styles.group}>
+            <Text variant="muted" size="xs" className={styles.groupHeading}>
+              {group.label}
+            </Text>
+            {group.tokens
+              .filter((token) => !PAIRED_TOKENS.has(token))
+              .map((token) => (
+                <TokenRow
+                  key={token}
+                  token={token}
+                  label={TOKEN_LABELS[token]}
+                  currentValue={overrides[token]}
+                  onChange={(value) => setToken(token, value)}
+                  disabled={readOnly}
+                />
+              ))}
+          </div>
+        ))}
         {EDITABLE_TOKENS.filter((token) => PAIRED_TOKENS.has(token)).map(
           (token) => (
             <PairedTokenRow
