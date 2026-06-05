@@ -158,19 +158,22 @@
 
 /*
  * Clip box for the orb video. Pinned to the stage rectangle, but
- * clipped only on the LEFT, RIGHT, and BOTTOM (via `clip-path`'s
- * negative top inset) so the scaled video never causes horizontal page
- * overflow or bleeds into the section below — while its gradient-faded
- * TOP edge stays visible above the cards, extending up toward the hero
- * band. Kept separate from `.orb` so the marquee sibling can still
- * overflow on hover. The hero band sets its own `z-index` (see
+ * clipped only on the LEFT and RIGHT (via `clip-path`'s negative
+ * top/bottom insets) so the scaled video never causes horizontal page
+ * overflow — while both its gradient-faded TOP and BOTTOM edges stay
+ * fully visible, giving a symmetric vertical fade. Leaving the top and
+ * bottom open lets the orb glow extend up toward the hero band and
+ * down toward the next section; both ends are mask-faded to transparent
+ * so the bleed reads as a soft glow on the shared off-black bg. Kept
+ * separate from `.orb` so the marquee sibling can still overflow on
+ * hover. The hero band sets its own `z-index` (see
  * `MarketingFirstScreen.module.css`) so the headline always paints
  * above this soft orb glow.
  */
 .orbVideoClip {
   position: absolute;
   inset: 0;
-  clip-path: inset(-100vh 0 0 0);
+  clip-path: inset(-100vh 0 -100vh 0);
   z-index: 0;
   pointer-events: none;
 }
