@@ -11,7 +11,17 @@
      starts at the same vertical position as those siblings. */
   padding: 120px 32px 0;
   box-sizing: border-box;
-  background: #16191d;
+  /* Hot-pink top-anchored glow above the dark base so the frosted
+     summary banner has something colorful to blur through; it fades
+     to transparent before the model catalog so that grid stays on the
+     readable dark surface. */
+  background:
+    radial-gradient(
+      120% 80% at 50% -10%,
+      rgba(245, 84, 159, 0.5) 0%,
+      rgba(213, 31, 108, 0) 48%
+    ),
+    #16191d;
 }
 
 /* Mirror `.feedbackPage`'s public-mode offset: the logged-out shell
@@ -51,9 +61,9 @@
   color: #fff;
   background: radial-gradient(
     ellipse 120% 110% at 72% 38%,
-    #f5549f 0%,
-    #ec2d7e 45%,
-    #d51f6c 100%
+    rgba(245, 84, 159, 0.55) 0%,
+    rgba(236, 45, 126, 0.5) 45%,
+    rgba(213, 31, 108, 0.45) 100%
   );
 }
 

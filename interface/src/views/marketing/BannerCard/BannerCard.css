@@ -1,35 +1,32 @@
-/* Reusable elevated card chrome for marketing "banner" surfaces.
-   See `BannerCard.tsx` for the rationale behind each property; the
-   values here were lifted from the original `.changelogStatsCard`
-   rule in `ChangelogView.css` (which now consumes this component).
-
-   Square corners + no border are intentional — the marketing
-   surface treats banner cards as full-width slabs rather than
-   pill-shaped tiles. */
+/* Reusable frosted-glass card chrome for marketing "banner" surfaces.
+   See `BannerCard.tsx` for the rationale behind each property. The
+   glass recipe (rounded corners, hairline border, soft shadow, 20px
+   backdrop blur) mirrors `.pricingPlansGrid` in `PricingView.css` so
+   the summary banners read as the same frosted surface as the pricing
+   plan grid. Each consuming view supplies its own translucent accent
+   tint via a `background` override; the fallback fill below only shows
+   if a page forgets to do so. */
 .bannerCard {
   display: flex;
   flex-direction: column;
   gap: 28px;
   padding: 28px 32px;
-  /* Slight elevation above the off-black section bg, matching the
-     `#0f0f12 → #141417` ramp used by `.productScreenSectionImageFrame`
-     so the card reads as one notch above the surrounding surface
-     without introducing a new shade. */
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+  -webkit-backdrop-filter: blur(20px) saturate(1.2);
+  backdrop-filter: blur(20px) saturate(1.2);
+  /* Fallback translucent tint; per-page overrides replace this with
+     their accent color. */
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01)),
-    #141417;
-  /* Floating drop shadow modeled on the landing-page `MockAuraApp`
-     desktop card (`0 30px 60px -20px rgba(0,0,0,0.55)`) but trimmed
-     down since this card is much smaller / sits closer to surrounding
-     content. */
-  box-shadow:
-    0 18px 40px -20px rgba(0, 0, 0, 0.55),
-    0 2px 6px rgba(0, 0, 0, 0.25);
+    rgba(20, 20, 23, 0.55);
 }
 
 @media (max-width: 768px) {
   .bannerCard {
     padding: 22px 22px;
     gap: 22px;
+    border-radius: 20px;
   }
 }

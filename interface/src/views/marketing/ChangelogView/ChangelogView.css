@@ -7,8 +7,19 @@
      (see the `--marketing-section-bg` rationale in
      `ProductView.module.css`). The token isn't inherited here
      because `ChangelogView` isn't wrapped by `.productView`, so
-     reference it explicitly with the same `#0f0f12` fallback. */
-  background: var(--marketing-section-bg, #0f0f12);
+     reference it explicitly with the same `#0f0f12` fallback.
+
+     A purple top-anchored glow sits above the dark base so the
+     frosted summary banner has something colorful to blur through;
+     it fades to transparent before the changelog entries so the
+     long content list stays on the readable dark surface. */
+  background:
+    radial-gradient(
+      120% 80% at 50% -10%,
+      rgba(108, 30, 180, 0.55) 0%,
+      rgba(60, 14, 110, 0) 48%
+    ),
+    var(--marketing-section-bg, #0f0f12);
 }
 
 .changelogPageShell {
@@ -39,10 +50,10 @@
   background:
     radial-gradient(
       ellipse 120% 110% at 72% 38%,
-      #3e0e72 0%,
-      #310a62 35%,
-      #220650 65%,
-      #170338 100%
+      rgba(62, 14, 114, 0.55) 0%,
+      rgba(49, 10, 98, 0.5) 35%,
+      rgba(34, 6, 80, 0.45) 65%,
+      rgba(23, 3, 56, 0.42) 100%
     );
 }
 
