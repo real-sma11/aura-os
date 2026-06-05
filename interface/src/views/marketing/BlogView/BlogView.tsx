@@ -31,6 +31,12 @@ function formatDate(value: string | null): string {
   return DATE_FORMATTER.format(parsed);
 }
 
+function isAuraAiHost(): boolean {
+  if (typeof window === "undefined") return false;
+  const host = window.location.hostname.toLowerCase();
+  return host === "aura.ai" || host === "www.aura.ai";
+}
+
 /**
  * Stable, deterministic heading slug. Used both to build the table of
  * contents from the raw markdown and to assign matching `id`s to the
@@ -268,6 +274,9 @@ function BlogTable({
         <thead>
           <tr>
             <th scope="col">Title</th>
+            <th scope="col" className={styles.colAuthor}>
+              Author
+            </th>
             <th scope="col" className={styles.colType}>
               Type
             </th>
@@ -284,6 +293,7 @@ function BlogTable({
                   {post.title}
                 </Link>
               </td>
+              <td className={styles.colAuthor}>{post.authorName ?? "—"}</td>
               <td className={styles.colType}>
                 <span className={styles.tableType}>{post.blogType}</span>
               </td>
@@ -307,9 +317,11 @@ function BlogTable({
 function BlogIndex({
   posts,
   isLoading,
+  suppressLoadingMessage,
 }: {
   posts: readonly BlogPost[];
   isLoading: boolean;
+  suppressLoadingMessage: boolean;
 }): React.ReactElement {
   const [featured, ...rest] = posts;
   return (
@@ -318,9 +330,11 @@ function BlogIndex({
         <span className={styles.latestLabel}>Latest</span>
       </header>
       {isLoading ? (
-        <p className={styles.stateMessage} aria-busy="true">
-          Loading posts…
-        </p>
+        suppressLoadingMessage ? null : (
+          <p className={styles.stateMessage} aria-busy="true">
+            Loading posts…
+          </p>
+        )
       ) : posts.length === 0 ? (
         <div className={styles.emptyState}>
           <h2>No posts yet.</h2>
@@ -559,7 +573,11 @@ export function BlogView(): React.ReactElement {
   if (!slug) {
     return (
       <section className={styles.page}>
-        <BlogIndex posts={allPosts} isLoading={postsLoading} />
+        <BlogIndex
+          posts={allPosts}
+          isLoading={postsLoading}
+          suppressLoadingMessage={isAuraAiHost()}
+        />
       </section>
     );
   }
