@@ -145,61 +145,49 @@
    down the file without having to duplicate the centered branch
    inside every breakpoint. */
 .pageHero.pageHeroCentered {
-  /* The section itself no longer owns the first-viewport min-height
-     or the symmetric vertical padding — those moved to
-     `.pageHeroContentCentered` below so the centered headline /
-     description / CTA stack fills the first screen on its own and
-     the flowing video block (`.pageHeroFlowVideo`) can sit BELOW
-     that stack as a regular block sibling. With the video out of
-     the absolute-backdrop layer, the section is just a vertical
-     flex column: content stack on top (~viewport tall), video
-     below the fold. The 0 min-height override is needed to undo
+  /* The section reserves exactly one visible AURA body height and
+     becomes the bottom-anchoring flex column for the first screen:
+     the headline / description / CTA stack (`.pageHeroContent`)
+     grows to fill the space at the TOP while the flowing video +
+     agent marquee (`.pageHeroFlowVideoWrapper`) sit as the last
+     flex child, so the video's bottom edge lands at the bottom of
+     the first screen and the text centers in the room above it.
+     Sizing the section to `100vh - 2 × --shell-chrome-outer-height`
+     (the body between the titlebar and taskbar pills) — instead of
      the `100vh` baseline declared on the base `.pageHero` rule
-     further up the file, otherwise the section would still try to
-     be a viewport tall even with no padding/content of its own,
-     leaving a black gap between the centered content and the
-     video. */
+     above — keeps the bottom anchor aligned to the visible body
+     bottom rather than the raw viewport bottom. The 42px fallback
+     covers any consumer that mounts PageHero outside the AuraShell
+     token context. */
   align-items: stretch;
-  min-height: 0;
+  min-height: calc(100vh - 2 * var(--shell-chrome-outer-height, 42px));
+  min-height: calc(100dvh - 2 * var(--shell-chrome-outer-height, 42px));
   padding: 0;
 }
 
 .pageHeroContentCentered {
   align-items: center;
   text-align: center;
-  /* Sized to the height of the visible AURA "body" (the area
-     between the top titlebar pill and the bottom taskbar pill),
-     NOT the full viewport. AuraShell's `.body` is a flex child
-     between `ShellTitlebar` (outer height
-     `--shell-chrome-outer-height` ≈ 42px) and `BottomTaskbar`
-     (same `--shell-chrome-outer-height` ≈ 42px), so the
-     scrollable marketing column inside it lives between
-     `viewport_top + 42px` and `viewport_bottom - 42px`. Sizing
-     the centered area to a FULL 100vh — the prior implementation
-     — placed `justify-content: center`'s 50% midpoint at
-     `body_top + 50vh = 50vh + 42px` in viewport coordinates,
-     which is 42px BELOW the visible body's center (the body is
-     symmetric around 50vh because both chromes are 42px). That
-     made the headline / description / CTA stack read as sitting
-     too low on initial load even though it was geometrically
-     centered in the section's own coordinate space. Matching
-     the content area to `100vh - 2 × --shell-chrome-outer-height`
-     puts the centered wrapper at the body's TRUE midpoint
-     instead, which is where the user's eye expects "vertically
-     centered in app". The 42px fallback covers any consumer
-     that mounts PageHero outside the AuraShell token context. */
+  /* Grows to fill the space ABOVE the bottom-anchored flow video
+     instead of reserving the full body height itself. The parent
+     `.pageHero.pageHeroCentered` now owns the one-body-height
+     min-height and is the flex column; this content block is its
+     first flex child with `flex: 1 1 auto`, so it expands to take
+     whatever vertical room the video + agent marquee leave at the
+     bottom. `justify-content: center` then centers the headline /
+     description / CTA stack within that room — i.e. between the
+     top of the screen and the top of the video. The `min-height:
+     0` override drops the old full-body reservation so the flex
+     grow (not a fixed height) drives the sizing; without it the
+     content block would still claim a whole body height and push
+     the video entirely below the fold. */
   box-sizing: border-box;
-  min-height: calc(
-    100vh - 2 * var(--shell-chrome-outer-height, 42px)
-  );
-  min-height: calc(
-    100dvh - 2 * var(--shell-chrome-outer-height, 42px)
-  );
+  flex: 1 1 auto;
+  min-height: 0;
   justify-content: center;
-  /* Mirrors the prior `.pageHero.pageHeroCentered` padding so
-     vertical centering reads visually balanced after the padding
-     ownership moved from the section to the content column. */
-  padding: 96px 32px;
+  /* Smaller than the old 96px so the centered text comfortably
+     fits in the room above the video on shorter viewports. */
+  padding: 48px 32px;
 }
 
 /* Wrapper div around the centered hero's headline / description /
@@ -455,29 +443,15 @@
   display: block;
   position: relative;
   z-index: 1;
-  /* Negative margin-top of `-body/8` keeps a SHALLOW peek strip
-     of the orb visible above the fold while the centered headline
-     stack still owns ~7/8 of the visible body — which leaves the
-     bulk of the orb (and the agent marquee strip overlaid on its
-     centerline) below the fold for the visitor to scroll into.
-     Was previously `-body/3` (33% peek), which crowded the
-     headline + description + CTA stack: at the bigger AURA orb
-     size and the new poster-style agent cards, the orb's halo
-     and the top edge of the marquee bled into the same vertical
-     band as the description, leaving no breathing room between
-     the headline group and the decorative loop below.
-     `-body/8` (~12.5% peek) restores that breathing room while
-     keeping a clear "there's more here" affordance pointing the
-     visitor toward the fold.
-     The `100dvh` fallback handles browsers (Safari < 16) where
-     the dynamic viewport unit is unsupported and the constant
-     `100vh` is the only option. */
-  margin-top: calc(
-    (100vh - 2 * var(--shell-chrome-outer-height, 42px)) / -8
-  );
-  margin-top: calc(
-    (100dvh - 2 * var(--shell-chrome-outer-height, 42px)) / -8
-  );
+  /* No negative peek offset: the wrapper is the LAST flex child of
+     the body-height `.pageHero.pageHeroCentered` column, with the
+     text block above it set to `flex: 1 1 auto`, so the video +
+     agent marquee flow naturally to the bottom of the first screen
+     and the video's bottom edge anchors at the body bottom. The
+     prior `-body/8` margin pulled the loop up so only a thin peek
+     showed above the fold; anchoring it to the bottom instead
+     brings the orb and the marquee strip into the first screen. */
+  margin-top: 0;
   /* Bottom breathing room so the flow video's mask fade-out can
      fully render before `.pageHero { overflow: hidden }` clips it.
      `transform: scale(1.44)` (see `.pageHeroFlowVideo`) blows the
