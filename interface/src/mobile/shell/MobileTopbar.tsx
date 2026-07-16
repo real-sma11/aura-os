@@ -4,7 +4,6 @@ import { ArrowLeft, CircleUserRound, Menu, Plus, Settings } from "lucide-react";
 import { useMobileDrawerStore } from "../../stores/mobile-drawer-store";
 import { projectAgentsRoute, projectRootPath } from "../../utils/mobileNavigation";
 import { MobileThemeToggleButton } from "../../components/MobileThemeToggleButton";
-import { AuraWordmark } from "../../components/AuraShell/AuraWordmark";
 import type { MobileShellState } from "./useMobileShellState";
 import {
   buildMobileReturnState,
@@ -116,7 +115,7 @@ export function MobileTopbar({ state }: { state: MobileShellState }) {
               </span>
             ) : (
               <span className={styles.mobileTopbarTitleButton} aria-label="Aura" style={{ userSelect: "none" }}>
-                <AuraWordmark />
+                <img src="/AURA_logo_text_mark.png" alt="AURA" draggable={false} data-aura-wordmark />
               </span>
             )}
           </span>
