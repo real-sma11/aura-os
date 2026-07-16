@@ -14,8 +14,9 @@ import styles from "./AuraShell.module.css";
  * shows. An unset color falls through to the theme default (white in
  * dark, black in light).
  *
- * Scoped to the desktop titlebar; the public leading-slot wordmark stays
- * the plain PNG `<img>`.
+ * Rendered by the authed desktop titlebar (`AuraTitlebar`) and the authed
+ * mobile topbar (`MobileTopbar`); public / logged-out wordmarks stay the
+ * plain PNG `<img>`.
  */
 export function AuraWordmark(): React.ReactElement {
   const { resolvedTheme } = useTheme();
