@@ -38,6 +38,13 @@ pub(crate) struct UpdateProjectRequest {
     pub local_workspace_path: Option<Option<String>>,
 }
 
+#[derive(Debug, Deserialize)]
+pub(crate) struct SetProjectWorkspaceRequest {
+    /// Absolute local path to attach. `null` clears the per-machine override.
+    #[serde(default, deserialize_with = "deserialize_patch_option")]
+    pub local_workspace_path: Option<Option<String>>,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub(crate) struct ImportedProjectFile {
     pub relative_path: String,
@@ -294,6 +301,11 @@ pub(crate) struct SendChatRequest {
     pub model: Option<String>,
     pub commands: Option<Vec<String>>,
     pub project_id: Option<String>,
+    /// Agents explicitly selected from the project chat composer's `@` menu.
+    /// The project route validates both ids against the current project's
+    /// user-facing bindings before this data reaches the harness.
+    #[serde(default)]
+    pub agent_mentions: Vec<AgentMentionDto>,
     #[serde(default)]
     pub attachments: Option<Vec<ChatAttachmentDto>>,
     #[serde(default)]
@@ -362,6 +374,12 @@ pub(crate) struct SendChatRequest {
     /// aggregator first, preserving a distinct UI/request contract.
     #[serde(default)]
     pub mixture: Option<MixtureRequestBody>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct AgentMentionDto {
+    pub agent_id: String,
+    pub agent_instance_id: String,
 }
 
 /// AURA Council selection from the chat client. See
