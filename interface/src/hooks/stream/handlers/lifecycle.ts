@@ -140,7 +140,31 @@ function getStreamErrorCode(error: unknown): string | undefined {
   ) {
     return (error as { code: string }).code;
   }
+  if (
+    typeof error === "object"
+    && error !== null
+    && typeof (error as { body?: { code?: unknown } }).body?.code === "string"
+  ) {
+    return (error as { body: { code: string } }).body.code;
+  }
   return undefined;
+}
+
+/**
+ * Match provider transport failures that arrive as a generic `llm_error`.
+ * These are different from model/auth/validation failures: the request was
+ * accepted, but the upstream HTTP/SSE connection disappeared before the
+ * assistant turn completed, so replaying the saved user turn is safe.
+ */
+function isTransientProviderTransportError(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("connection closed before message completed") ||
+    normalized.includes("provider stream interrupted before completion") ||
+    normalized.includes("error sending request for url") ||
+    normalized.includes("connection reset by peer") ||
+    normalized.includes("stream terminated unexpectedly")
+  );
 }
 
 /**
@@ -196,6 +220,13 @@ export function isStreamDroppedError(error: unknown, message?: string): boolean 
   const text = message ?? getStreamErrorMessage(error);
   if (/^SSE idle timeout/i.test(text)) return true;
   if (/^Stream lagged/i.test(text)) return true;
+  // The same reqwest phrase can occur before a chat stream exists (for
+  // example while resolving the agent through aura-network). Only treat it
+  // as a provider interruption when the server identifies an LLM error, or
+  // when an unstructured legacy/plain Error carries the text.
+  if ((code === undefined || code === "llm_error") && isTransientProviderTransportError(text)) {
+    return true;
+  }
   return false;
 }
 

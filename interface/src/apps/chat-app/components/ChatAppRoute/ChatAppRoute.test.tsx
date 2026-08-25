@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { vi } from "vitest";
 import { ChatAppRoute } from "./ChatAppRoute";
 
@@ -25,8 +25,12 @@ const mocks = vi.hoisted(() => ({
     { project_agent_id: string; project_id: string; project_name: string }[]
   >,
   sessions: [] as FakeSession[],
-  useChatAppChat: vi.fn(() => ({})),
+  useChatAppChat: vi.fn(() => ({ streamKey: "chat-stream" })),
   setLastChatRoute: vi.fn(),
+  pendingQuickPrompt: null as { agentId: string; text: string } | null,
+  takeForAgent: vi.fn(),
+  setDraft: vi.fn(),
+  drafts: {} as Record<string, string>,
 }));
 
 vi.mock("react-router-dom", () => ({
@@ -94,6 +98,27 @@ vi.mock("../../../../utils/storage", () => ({
   setLastChatRoute: (...args: unknown[]) => mocks.setLastChatRoute(...args),
 }));
 
+vi.mock("../../../../stores/quick-prompt-store", () => {
+  const useQuickPromptStore = Object.assign(
+    (selector: (state: { pendingPrompt: typeof mocks.pendingQuickPrompt }) => unknown) =>
+      selector({ pendingPrompt: mocks.pendingQuickPrompt }),
+    {
+      getState: () => ({ takeForAgent: mocks.takeForAgent }),
+    },
+  );
+  return {
+    useQuickPromptStore,
+    mergeQuickPromptDraft: (existing: string, incoming: string) =>
+      existing ? `${existing}\n\n${incoming}` : incoming,
+  };
+});
+
+vi.mock("../../../../stores/chat-ui-store", () => ({
+  useChatUIStore: {
+    getState: () => ({ drafts: mocks.drafts, setDraft: mocks.setDraft }),
+  },
+}));
+
 describe("ChatAppRoute", () => {
   beforeEach(() => {
     mocks.searchParams = new URLSearchParams();
@@ -106,7 +131,11 @@ describe("ChatAppRoute", () => {
     mocks.setSearchParams.mockReset();
     mocks.setLastChatRoute.mockReset();
     mocks.useChatAppChat.mockReset();
-    mocks.useChatAppChat.mockReturnValue({});
+    mocks.useChatAppChat.mockReturnValue({ streamKey: "chat-stream" });
+    mocks.pendingQuickPrompt = null;
+    mocks.takeForAgent.mockReset();
+    mocks.setDraft.mockReset();
+    mocks.drafts = {};
     mocks.remoteOnly = false;
   });
 
@@ -145,7 +174,6 @@ describe("ChatAppRoute", () => {
 
     expect(mocks.useChatAppChat).toHaveBeenCalledWith("agent-2", "s1", {
       freshCanvasPending: false,
-      onFreshSendStarted: expect.any(Function),
     });
   });
 
@@ -224,8 +252,27 @@ describe("ChatAppRoute", () => {
 
     expect(mocks.useChatAppChat).toHaveBeenCalledWith("ceo", null, {
       freshCanvasPending: true,
-      onFreshSendStarted: expect.any(Function),
     });
+  });
+
+  it("places a Quick Prompt handoff into the active Chat app composer", () => {
+    mocks.searchParams = new URLSearchParams(
+      "agent=agent-2&project=p1&instance=i1&session=s1",
+    );
+    mocks.pendingQuickPrompt = {
+      agentId: "agent-2",
+      text: "Review this before sending",
+    };
+    mocks.takeForAgent.mockReturnValue("Review this before sending");
+    mocks.drafts = { "chat-stream": "Existing draft" };
+
+    render(<ChatAppRoute />);
+
+    expect(mocks.takeForAgent).toHaveBeenCalledWith("agent-2");
+    expect(mocks.setDraft).toHaveBeenCalledWith(
+      "chat-stream",
+      "Existing draft\n\nReview this before sending",
+    );
   });
 
   it("asks the chat-agent resolver for a web-safe agent on remote-only clients", () => {
@@ -236,7 +283,6 @@ describe("ChatAppRoute", () => {
 
     expect(mocks.useChatAppChat).toHaveBeenCalledWith("ceo", null, {
       freshCanvasPending: true,
-      onFreshSendStarted: expect.any(Function),
     });
   });
 
@@ -248,38 +294,32 @@ describe("ChatAppRoute", () => {
     expect(mocks.useChatAppChat).toHaveBeenCalledWith("ceo", null, {
       freshCanvasPending: true,
       freshCanvasKey: "abc",
-      onFreshSendStarted: expect.any(Function),
     });
   });
 
-  it("adopts the persisted session route after a fresh chat first send materializes in the session list", async () => {
+  it("does not infer a fresh route from sessions materializing in the global list", () => {
     mocks.searchParams = new URLSearchParams("fresh=abc");
     const { rerender } = render(<ChatAppRoute />);
-    const firstCallOptions = mocks.useChatAppChat.mock.calls.at(-1)?.[2] as
-      | { onFreshSendStarted?: () => void }
-      | undefined;
-    firstCallOptions?.onFreshSendStarted?.();
 
     mocks.sessions = [
       {
-        session_id: "s-new",
-        _projectId: "p-new",
-        _agentInstanceId: "i-new",
-        _agentId: "ceo",
+        session_id: "private-second-opinion-reference",
+        _projectId: "p-reference",
+        _agentInstanceId: "i-reference",
+        _agentId: "reference-agent",
+        started_at: new Date().toISOString(),
+      },
+      {
+        session_id: "other-tab-session",
+        _projectId: "p-other",
+        _agentInstanceId: "i-other",
+        _agentId: "other-agent",
         started_at: new Date().toISOString(),
       },
     ];
     rerender(<ChatAppRoute />);
 
-    await waitFor(() => expect(mocks.setSearchParams).toHaveBeenCalled());
-    const [updater, options] = mocks.setSearchParams.mock.calls[0];
-    const next = updater(new URLSearchParams("fresh=abc")) as URLSearchParams;
-    expect(options).toEqual({ replace: true });
-    expect(next.get("fresh")).toBeNull();
-    expect(next.get("session")).toBe("s-new");
-    expect(next.get("project")).toBe("p-new");
-    expect(next.get("instance")).toBe("i-new");
-    expect(next.get("agent")).toBe("ceo");
+    expect(mocks.setSearchParams).not.toHaveBeenCalled();
   });
 
   it("does not adopt a fresh route before the active chat sends", () => {
@@ -309,7 +349,6 @@ describe("ChatAppRoute", () => {
 
     expect(mocks.useChatAppChat).toHaveBeenCalledWith(undefined, null, {
       freshCanvasPending: true,
-      onFreshSendStarted: expect.any(Function),
     });
     const props = JSON.parse(
       screen.getByTestId("chat-panel").getAttribute("data-props") ?? "{}",

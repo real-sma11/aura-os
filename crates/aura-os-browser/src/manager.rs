@@ -1,21 +1,23 @@
 //! Browser session registry + façade over the backend, settings store,
 //! and resolver.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use aura_os_core::ProjectId;
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Mutex};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 use url::Url;
 
-use crate::backend::{BrowserBackend, StubBackend};
+use crate::backend::{BrowserBackend, BrowserExecutableStatus, StubBackend};
 use crate::config::{BrowserConfig, ResolveOptions, SpawnOptions};
 use crate::error::Error;
 use crate::protocol::{ClientMsg, ServerEvent};
+use crate::runtime_settings::BrowserRuntimeSettings;
 use crate::session::resolver::{resolve_initial_url, ResolvedInitialUrl};
 use crate::session::settings::{DetectedUrl, ProjectBrowserSettings, SettingsPatch, SettingsStore};
 use crate::session::{SessionHandle, SessionId};
@@ -28,6 +30,7 @@ struct RegistryEntry {
     owner_id: Option<String>,
     project_id: Option<ProjectId>,
     cancel: CancellationToken,
+    cleanup_token: Option<CancellationToken>,
     created_at: DateTime<Utc>,
     initial_url: Option<Url>,
     /// Event receiver owned by the manager until the WS handler takes it.
@@ -59,6 +62,7 @@ pub struct BrowserManager {
     settings: SettingsStore,
     sessions: DashMap<SessionId, RegistryEntry>,
     backend: Arc<dyn BrowserBackend>,
+    runtime_settings_lock: Mutex<()>,
 }
 
 impl std::fmt::Debug for BrowserManager {
@@ -80,6 +84,7 @@ impl BrowserManager {
             settings,
             sessions: DashMap::new(),
             backend: Arc::new(StubBackend),
+            runtime_settings_lock: Mutex::new(()),
         }
     }
 
@@ -91,6 +96,7 @@ impl BrowserManager {
             settings,
             sessions: DashMap::new(),
             backend,
+            runtime_settings_lock: Mutex::new(()),
         }
     }
 
@@ -102,6 +108,39 @@ impl BrowserManager {
     /// Return the active configuration.
     pub fn config(&self) -> &BrowserConfig {
         &self.config
+    }
+
+    /// Report the local executable selected by the active browser backend.
+    pub fn browser_executable_status(&self) -> BrowserExecutableStatus {
+        self.backend.browser_executable_status()
+    }
+
+    /// Save and activate a local browser executable override.
+    ///
+    /// Passing `None` clears the override and immediately re-runs environment
+    /// and platform discovery for the next Preview session.
+    pub async fn set_browser_executable_path(
+        &self,
+        path: Option<PathBuf>,
+    ) -> Result<BrowserExecutableStatus, Error> {
+        let _guard = self.runtime_settings_lock.lock().await;
+        let previous = BrowserRuntimeSettings::load(&self.config.settings_root);
+        let status = self
+            .backend
+            .set_browser_executable_path(path.clone())
+            .await?;
+        let updated = BrowserRuntimeSettings {
+            executable_path: path,
+            ..BrowserRuntimeSettings::default()
+        };
+        if let Err(error) = updated.save(&self.config.settings_root).await {
+            let _ = self
+                .backend
+                .set_browser_executable_path(previous.executable_path)
+                .await;
+            return Err(error);
+        }
+        Ok(status)
     }
 
     /// Spawn a new session.
@@ -165,9 +204,16 @@ impl BrowserManager {
         let id = SessionId::new();
         let cancel = CancellationToken::new();
         let (tx, rx) = mpsc::channel(EVENT_CHANNEL_CAP);
-        self.backend
+        if let Err(error) = self
+            .backend
             .start_session(id, opts.clone(), resolved_url.clone(), tx, cancel.clone())
-            .await?;
+            .await
+        {
+            if let Some(cleanup) = opts.cleanup_token.as_ref() {
+                cleanup.cancel();
+            }
+            return Err(error);
+        }
 
         self.sessions.insert(
             id,
@@ -175,6 +221,7 @@ impl BrowserManager {
                 owner_id,
                 project_id: opts.project_id,
                 cancel,
+                cleanup_token: opts.cleanup_token,
                 created_at: Utc::now(),
                 initial_url: resolved_url.clone(),
                 events: std::sync::Mutex::new(Some(rx)),
@@ -249,6 +296,9 @@ impl BrowserManager {
             return Ok(());
         };
         entry.cancel.cancel();
+        if let Some(cleanup) = entry.cleanup_token {
+            cleanup.cancel();
+        }
         self.backend.stop_session(id).await?;
         info!(%id, "browser session killed");
         Ok(())
@@ -420,6 +470,20 @@ mod tests {
         assert_eq!(manager.list().len(), 1);
         manager.kill(id).await.unwrap();
         assert!(manager.list().is_empty());
+    }
+
+    #[tokio::test]
+    async fn kill_cancels_caller_owned_session_resources() {
+        let dir = tempdir().unwrap();
+        let manager = BrowserManager::new(test_config(&dir));
+        let cleanup = CancellationToken::new();
+        let mut options = SpawnOptions::new(1280, 800);
+        options.cleanup_token = Some(cleanup.clone());
+
+        let handle = manager.spawn(options).await.unwrap();
+        assert!(!cleanup.is_cancelled());
+        manager.kill(handle.id).await.unwrap();
+        assert!(cleanup.is_cancelled());
     }
 
     #[tokio::test]

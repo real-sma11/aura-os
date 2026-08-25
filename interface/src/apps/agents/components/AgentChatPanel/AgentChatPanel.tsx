@@ -34,9 +34,20 @@ import {
 import { useFreshCanvas } from "../../hooks/use-fresh-canvas";
 import { useOptimisticSessionRow } from "../../hooks/use-optimistic-session-row";
 import { useAutoRenameFromPrompt } from "../../hooks/use-auto-rename-from-prompt";
+import { useAgentProjectBindings } from "../../hooks/use-agent-project-bindings";
 import { useNewSessionUrlSync } from "../../hooks/use-new-session-url-sync";
 import { ProjectAgentSwitcher } from "../ProjectAgentSwitcher";
 import { resolveAgentChatAvailability } from "../../../../shared/lib/agent-chat-availability";
+import { SafeWorkspaceBar } from "./SafeWorkspaceBar";
+import { useChatUIStore } from "../../../../stores/chat-ui-store";
+import {
+  mergeQuickPromptDraft,
+  useQuickPromptStore,
+} from "../../../../stores/quick-prompt-store";
+import {
+  DESIGN_PROMPT_EVENT,
+  type DesignPromptDetail,
+} from "../../../../shared/lib/design-context";
 
 const EMPTY_PROJECTS: Project[] = [];
 const EMPTY_AGENT_INSTANCES: AgentInstance[] = [];
@@ -86,7 +97,13 @@ export function AgentChatPanel({
 }: AgentChatPanelProps) {
   const navigate = useNavigate();
   const [, setSearchParams] = useSearchParams();
-  const { features, isMobileLayout, remoteOnly } = useAuraCapabilities();
+  const {
+    features,
+    hasDesktopBridge,
+    hostedSafeWorkspace,
+    isMobileLayout,
+    remoteOnly,
+  } = useAuraCapabilities();
   const currentProject = useProjectsListStore(useShallow(selectCurrentProject(projectId)));
   const projectName = currentProject[0]?.name ?? "";
   const projectAgents = useProjectsListStore(
@@ -102,6 +119,17 @@ export function AgentChatPanel({
 
   const { agentName, machineType, templateAgentId, adapterType, defaultModel } =
     useAgentChatMeta("project", { projectId, agentInstanceId });
+  const projectBindings = useAgentProjectBindings(
+    orgAgentId ?? templateAgentId ?? null,
+  );
+  const projectPickerOptions = useMemo(
+    () =>
+      projectBindings.map((binding) => ({
+        project_id: binding.project_id,
+        name: binding.project_name,
+      })),
+    [projectBindings],
+  );
   const remoteStatus = useProfileStatusStore((state) =>
     templateAgentId ? state.statuses[templateAgentId] : undefined,
   );
@@ -117,7 +145,9 @@ export function AgentChatPanel({
   const localUnavailable = remoteOnly && machineType === "local";
   const sendDisabled = localUnavailable || !chatAvailability.available;
   const sendDisabledReason = localUnavailable
-    ? "This local agent is not available in this browser."
+    ? hasDesktopBridge
+      ? "The local agent runtime is unavailable. Restart Aura to retry recovery."
+      : "This local agent is not available in this browser."
     : chatAvailability.reason;
 
   // Resolves the project's workspace path (and remote-agent id when
@@ -141,6 +171,75 @@ export function AgentChatPanel({
     workspaceAccess.kind === "remote"
       ? terminalTarget.remoteAgentInstanceId
       : undefined;
+  const [safeWorkspaceSelection, setSafeWorkspaceSelection] = useState({
+    sessionId,
+    enabled: false,
+  });
+  // Safe Workspace Git/worktree operations must run in the service that owns
+  // the project filesystem, so `machineType === "local"` alone is not a
+  // sufficient capability check. The desktop bridge proves that the project
+  // and embedded server share the same host filesystem. Web stays hidden until
+  // the hosted harness explicitly advertises the workspace-lifecycle API.
+  const safeWorkspaceRuntimeAvailable =
+    machineType === "local" && (hasDesktopBridge || hostedSafeWorkspace);
+  const desktopSafeWorkspaceNeedsEligibility =
+    machineType === "local" && hasDesktopBridge;
+  const safeWorkspaceEligibilityKey = [
+    projectId,
+    agentInstanceId,
+    terminalTarget.workspacePath ?? "",
+    terminalTarget.remoteWorkspacePath ?? "",
+    hasDesktopBridge,
+    hostedSafeWorkspace,
+  ].join(":");
+  const [safeWorkspaceEligibility, setSafeWorkspaceEligibility] = useState({
+    key: "",
+    available: false,
+  });
+  useEffect(() => {
+    if (!desktopSafeWorkspaceNeedsEligibility) return;
+    let cancelled = false;
+    void api
+      .getSafeWorkspaceEligibility(projectId, agentInstanceId)
+      .then((result) => {
+        if (!cancelled) {
+          setSafeWorkspaceEligibility({
+            key: safeWorkspaceEligibilityKey,
+            available: result.available,
+          });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSafeWorkspaceEligibility({
+            key: safeWorkspaceEligibilityKey,
+            available: false,
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    agentInstanceId,
+    projectId,
+    desktopSafeWorkspaceNeedsEligibility,
+    safeWorkspaceEligibilityKey,
+  ]);
+  const safeWorkspaceAvailable =
+    safeWorkspaceRuntimeAvailable &&
+    ((!hasDesktopBridge && hostedSafeWorkspace) ||
+      (hasDesktopBridge &&
+        safeWorkspaceEligibility.key === safeWorkspaceEligibilityKey &&
+        safeWorkspaceEligibility.available));
+  const safeWorkspaceEnabled =
+    safeWorkspaceAvailable &&
+    safeWorkspaceSelection.sessionId === sessionId &&
+    safeWorkspaceSelection.enabled;
+  const setSafeWorkspaceEnabled = useCallback(
+    (enabled: boolean) => setSafeWorkspaceSelection({ sessionId, enabled }),
+    [sessionId],
+  );
 
   const optimisticRow = useOptimisticSessionRow({
     projectId,
@@ -153,16 +252,69 @@ export function AgentChatPanel({
     setSearchParams,
     onSessionAdopted: optimisticRow.swap,
   });
+  const handleSafeSessionReady = useCallback(
+    (nextSessionId: string) => {
+      setSafeWorkspaceSelection((current) =>
+        current.sessionId === null
+          ? { ...current, sessionId: nextSessionId }
+          : current,
+      );
+      handleSessionReady(nextSessionId);
+    },
+    [handleSessionReady],
+  );
 
   const { streamKey, sendMessage, stopStreaming, resetEvents, markNextSendAsNewSession } =
     useChatStream({
       projectId,
       agentInstanceId,
       sessionId,
-      onSessionReady: handleSessionReady,
+      onSessionReady: handleSafeSessionReady,
       workspaceToolsEnabled,
       workspaceStartAgentInstanceId,
+      safeWorkspace: safeWorkspaceEnabled,
     });
+
+  const pendingQuickPrompt = useQuickPromptStore((state) => state.pendingPrompt);
+  useEffect(() => {
+    if (!pendingQuickPrompt) return;
+    if (
+      pendingQuickPrompt.agentId !== orgAgentId &&
+      pendingQuickPrompt.agentId !== templateAgentId
+    ) {
+      return;
+    }
+    const prompt = useQuickPromptStore
+      .getState()
+      .takeForAgent(pendingQuickPrompt.agentId);
+    if (!prompt) return;
+    const chat = useChatUIStore.getState();
+    chat.setDraft(
+      streamKey,
+      mergeQuickPromptDraft(chat.drafts[streamKey] ?? "", prompt),
+    );
+  }, [orgAgentId, pendingQuickPrompt, streamKey, templateAgentId]);
+
+  useEffect(() => {
+    const handleDesignPrompt = (event: Event) => {
+      const detail = (event as CustomEvent<DesignPromptDetail>).detail;
+      if (
+        !detail?.prompt ||
+        (detail.projectId && detail.projectId !== projectId)
+      )
+        return;
+      const store = useChatUIStore.getState();
+      const current = store.getDraft(streamKey).trim();
+      store.setDraft(
+        streamKey,
+        current ? `${current}\n\n${detail.prompt}` : detail.prompt,
+      );
+      event.preventDefault();
+    };
+    window.addEventListener(DESIGN_PROMPT_EVENT, handleDesignPrompt);
+    return () =>
+      window.removeEventListener(DESIGN_PROMPT_EVENT, handleDesignPrompt);
+  }, [projectId, streamKey]);
 
   const contextUsage = useContextUsage(streamKey);
 
@@ -351,6 +503,23 @@ export function AgentChatPanel({
     }
     stopStreaming();
   }, [loopOnlyBusy, projectId, agentInstanceId, stopStreaming]);
+  const askAside = useCallback(
+    async (question: string) => {
+      if (!sessionId) {
+        throw new Error(
+          "Start the main conversation before asking a side question.",
+        );
+      }
+      const response = await api.askSessionAside(
+        projectId,
+        agentInstanceId,
+        sessionId,
+        question,
+      );
+      return response.answer;
+    },
+    [agentInstanceId, projectId, sessionId],
+  );
 
   const deferredLoading = useDelayedLoading(isLoading);
   const panelKey = sessionId
@@ -380,12 +549,27 @@ export function AgentChatPanel({
     },
     [navigate, projectId],
   );
+  const switchAgentProject = useCallback(
+    (nextProjectId: string) => {
+      const binding = projectBindings.find(
+        (candidate) => candidate.project_id === nextProjectId,
+      );
+      if (!binding || binding.project_id === projectId) return;
+      setLastProject(binding.project_id);
+      setLastAgent(binding.project_id, binding.project_agent_id);
+      navigate(
+        `/projects/${binding.project_id}/agents/${binding.project_agent_id}`,
+      );
+    },
+    [navigate, projectBindings, projectId],
+  );
 
   const panelProps: ChatPanelProps = {
     streamKey,
     transcriptKey: historyKey,
     onSend: wrappedSend,
     onStop: handleCombinedStop,
+    onAside: askAside,
     isExternallyBusy: loopOnlyBusy,
     externalBusyMessage: loopOnlyBusy
       ? "This agent is running an automation task. Stop it to chat."
@@ -411,8 +595,21 @@ export function AgentChatPanel({
     isLoadingPriorSession: prior.isLoadingPriorSession,
     sessionBoundaries: prior.sessionBoundaries,
     loadOlderPage,
+    header: safeWorkspaceAvailable ? (
+      <SafeWorkspaceBar
+        projectId={projectId}
+        agentInstanceId={agentInstanceId}
+        sessionId={sessionId}
+        enabled={safeWorkspaceEnabled}
+        onEnabledChange={setSafeWorkspaceEnabled}
+        isBusy={busy.isBusy}
+      />
+    ) : undefined,
     projects: currentProject,
+    projectPickerOptions,
     selectedProjectId: projectId,
+    onProjectChange:
+      projectPickerOptions.length > 1 ? switchAgentProject : undefined,
     // The projects-app pins the wire `project_id` to the route
     // project — same value as the picker. Threaded explicitly so
     // the chat panel can't accidentally swap in a different LLM
@@ -426,6 +623,7 @@ export function AgentChatPanel({
     contextUsage,
     onFetchContextContents: contextContentsFetcher,
     onNewChat: () => {
+      setSafeWorkspaceSelection({ sessionId: null, enabled: false });
       optimisticRow.arm();
       fresh.newChat();
     },

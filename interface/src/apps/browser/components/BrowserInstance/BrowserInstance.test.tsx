@@ -11,6 +11,11 @@ import type {
   UseBrowserOptions,
   UseBrowserReturn,
 } from "../../../../hooks/use-browser";
+import { ApiClientError } from "../../../../shared/api/core";
+import {
+  DESIGN_PROMPT_EVENT,
+  type DesignPromptDetail,
+} from "../../../../shared/lib/design-context";
 
 // Capture the `useBrowser` options the component registers so each test can
 // drive the navigation lifecycle (`onNav` / `onNavError`) directly. Using
@@ -68,8 +73,17 @@ vi.mock("../BrowserAddressBar", () => ({
 }));
 
 vi.mock("../BrowserViewport", () => ({
-  BrowserViewport: ({ overlay }: { overlay?: React.ReactNode }) => (
-    <div data-testid="viewport">{overlay}</div>
+  BrowserViewport: ({
+    overlay,
+    placeholder,
+  }: {
+    overlay?: React.ReactNode;
+    placeholder?: string;
+  }) => (
+    <div data-testid="viewport">
+      {placeholder}
+      {overlay}
+    </div>
   ),
 }));
 
@@ -92,8 +106,16 @@ function navState(url: string, loading = false): NavState {
   };
 }
 
-function setup() {
-  render(<BrowserInstance clientId="client-1" width={400} height={300} />);
+function setup(props?: { projectId?: string; remoteAgentId?: string }) {
+  render(
+    <BrowserInstance
+      clientId="client-1"
+      projectId={props?.projectId}
+      remoteAgentId={props?.remoteAgentId}
+      width={400}
+      height={300}
+    />,
+  );
   if (!capturedOpts.current) {
     throw new Error("useBrowser was not invoked during render");
   }
@@ -189,5 +211,103 @@ describe("BrowserInstance navError lifecycle", () => {
     );
 
     expect(screen.getByText("Can't connect to server")).toBeInTheDocument();
+  });
+
+  it("routes the selected remote agent into browser spawn and hands errors to chat", () => {
+    const opts = setup({
+      projectId: "project-1",
+      remoteAgentId: "agent-1",
+    });
+    expect(opts.remoteAgentId).toBe("agent-1");
+
+    let detail: DesignPromptDetail | undefined;
+    const listener = (event: Event) => {
+      detail = (event as CustomEvent<DesignPromptDetail>).detail;
+      event.preventDefault();
+    };
+    window.addEventListener(DESIGN_PROMPT_EVENT, listener);
+    act(() => opts.onNavError?.(ERROR_404));
+    fireEvent.click(screen.getByRole("button", { name: "Ask Agent" }));
+    window.removeEventListener(DESIGN_PROMPT_EVENT, listener);
+
+    expect(detail?.projectId).toBe("project-1");
+    expect(detail?.prompt).toContain("<aura_preview_error>");
+    expect(detail?.prompt).toContain("http://127.0.0.1:8080/");
+  });
+});
+
+describe("BrowserInstance launch errors", () => {
+  beforeEach(() => {
+    capturedOpts.current = null;
+    mockSend.mockClear();
+    delete (window as Window & { __AURA_BOOT_AUTH__?: unknown })
+      .__AURA_BOOT_AUTH__;
+  });
+
+  it("identifies hosted runtime failures without suggesting a local browser", () => {
+    const opts = setup();
+
+    act(() =>
+      opts.onError?.(
+        new ApiClientError(503, {
+          error:
+            "Could not start a supported browser. AURA supports Microsoft Edge, Google Chrome, and Chromium.",
+          code: "browser_launch_failed",
+          details: "Executable was blocked by organization policy",
+        }),
+      ),
+    );
+
+    expect(screen.getByTestId("viewport")).toHaveTextContent(
+      "AURA's hosted browser could not start",
+    );
+    expect(screen.getByTestId("viewport")).toHaveTextContent(
+      "Executable was blocked by organization policy",
+    );
+  });
+
+  it("keeps legacy launch failures actionable during a rolling web update", () => {
+    const opts = setup();
+
+    act(() =>
+      opts.onError?.(
+        new Error(
+          "browser backend error in `chromium_launch`: Could not auto detect a chrome executable",
+        ),
+      ),
+    );
+
+    expect(screen.getByTestId("viewport")).toHaveTextContent(
+      "AURA's hosted browser could not start",
+    );
+    expect(screen.getByTestId("viewport")).toHaveTextContent(
+      "Could not auto detect a chrome executable",
+    );
+    expect(screen.getByTestId("viewport")).not.toHaveTextContent(
+      "Settings > Advanced",
+    );
+  });
+
+  it("keeps the browser picker guidance in the desktop runtime", () => {
+    Object.defineProperty(window, "__AURA_BOOT_AUTH__", {
+      configurable: true,
+      value: { token: "test" },
+    });
+    const opts = setup();
+
+    act(() =>
+      opts.onError?.(
+        new Error(
+          "browser backend error in `chromium_launch`: executable is missing",
+        ),
+      ),
+    );
+
+    expect(screen.getByTestId("viewport")).toHaveTextContent(
+      "Settings > Advanced",
+    );
+    expect(screen.getByTestId("viewport")).toHaveTextContent(
+      "Microsoft Edge",
+    );
   });
 });

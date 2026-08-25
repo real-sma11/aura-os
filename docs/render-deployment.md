@@ -8,7 +8,7 @@ calls belong on `aura-api`, never on the static frontend.
 
 | Service | Type | Responsibility |
 |---------|------|----------------|
-| `aura-api` | Web Service | Builds and runs `aura-os-server` at `https://api.aura.ai` |
+| `aura-api` | Docker Web Service | Builds and runs `aura-os-server` plus its managed Chromium runtime at `https://api.aura.ai` |
 | `aura-app` | Static Site | Builds `interface/` and publishes `interface/dist` |
 
 Both services deploy `main`. Keep the actual Render build/start commands in
@@ -27,6 +27,7 @@ source of truth.
 | `AURA_ROUTER_URL` | `https://aura-router.onrender.com` |
 | `Z_BILLING_URL` | `https://z-billing.onrender.com` |
 | `BRAVE_SEARCH_PLATFORM_KEY` | Aura's Brave Search subscription key (secret) |
+| `BROWSER_EXECUTABLE_PATH` | Leave unset or set to `/usr/bin/chromium`. The production Dockerfile supplies this value. Remove stale host-specific overrides. |
 
 `BRAVE_SEARCH_PLATFORM_KEY` must exist only on `aura-api`. Do not add it to
 `aura-app`, any `VITE_*` variable, GitHub Actions desktop secrets, or renderer
@@ -119,12 +120,25 @@ project files. Imported browser files are copied to the protected
 cleanup through `DELETE /workspace/:project_id`; deploy the matching Harness
 build before the aura-api build that starts calling those lifecycle endpoints.
 
+Safe Workspace uses capability negotiation because its Git worktrees must be
+created by the service that owns the files. The hosted Harness advertises
+`safe_workspace: true` from `/health` and owns the protected
+`/workspace/:project_id/safe/:session_id/...` lifecycle. Aura API exposes the
+control only after that capability is present; a missing field, failed probe,
+or older Harness keeps the control hidden and rejects direct opt-in requests.
+For this feature, deploy Aura API first (it fails closed against the older
+Harness), then deploy Harness. This avoids a window where an older Aura API
+exposes a control it cannot proxy.
+
 The browser file explorer and interactive terminal remain unavailable for
 hosted-local workspaces. Their existing local routes execute on aura-api's
 filesystem, while Harness's terminal currently opens a service-level home
 directory rather than a project sandbox. Do not proxy either surface as if it
 were desktop-local. Agent file and command tools do execute inside the hosted
-project workspace. The opt-in aura-api workspace health gate is also skipped
+project workspace. When Safe Workspace is active, the parent run and all of its
+spawned child agents receive the same isolated session path; child-agent
+dispatch semantics are otherwise unchanged. The opt-in aura-api workspace
+health gate is also skipped
 for hosted-local and Swarm workspaces because aura-api cannot run `cargo check`
 inside another service's filesystem.
 
@@ -149,6 +163,43 @@ local-agent chat/dev-loop routes before they reach the hosted local harness.
 
 2. **Local storage model** — Aura no longer depends on the old embedded C++ database layer. Browser-owned persistence lives in IndexedDB, while the local backend uses a lightweight JSON/runtime store.
 
+3. **Preview browser** — Deploy `aura-api` from the repository-root
+   `Dockerfile`, not Render's native Rust runtime. The image installs Debian's
+   Chromium package, runs the API as a non-root user, and sets
+   `BROWSER_EXECUTABLE_PATH=/usr/bin/chromium`. Normal `dev-channel` and
+   `stable-channel` server builds include the CDP backend.
+
+   The image also sets `AURA_BROWSER_STARTUP_PROBE=1`. On every container
+   start the server launches Chromium, opens and closes a blank page over CDP,
+   and exits before binding the API port if that check fails. This lets Render
+   reject or roll back a broken deployment before users discover it in
+   Preview.
+
+   Standard Docker/Render security profiles do not grant the namespace
+   capabilities Chromium's inner Linux sandbox requires. The image therefore
+   sets `BROWSER_DISABLE_SANDBOX=1`; the non-root container is the browser's
+   isolation boundary. Do not use this image as a shared host process or add
+   host mounts containing secrets. If Preview eventually moves into a
+   dedicated browser sidecar, remove this override there once that runtime can
+   provide Chromium-compatible namespaces.
+
+### Migrating `aura-api` to the managed browser image
+
+1. Configure the existing `aura-api` Web Service to build the root
+   `Dockerfile` from `main`. Keep the service URL, environment variables,
+   health check, and instance count unchanged.
+2. Remove any Windows/macOS or otherwise stale `BROWSER_EXECUTABLE_PATH`
+   override from the Render environment. The image default is
+   `/usr/bin/chromium`; an explicit Render value must match it.
+3. Deploy the candidate image and require the log line
+   `browser: startup Chromium/CDP probe succeeded` before promoting it.
+4. Sign in to AURA Web, open Preview, load a page, and verify both a rendered
+   frame and Design-mode element selection.
+
+Rollback is the previous `aura-api` image/configuration. Because `aura-app`
+is a separate static service, this migration does not change its build or
+assets.
+
 ## Post-Deploy Verification
 
 ```bash
@@ -162,6 +213,12 @@ curl -X POST https://api.aura.ai/api/auth/login \
 
 # Frontend loads
 open https://YOUR-AURA-APP-DOMAIN
+```
+
+The API container's startup log must include:
+
+```text
+browser: startup Chromium/CDP probe succeeded
 ```
 
 After signing in, start a chat and ask for current information. Verify the

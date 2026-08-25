@@ -5,6 +5,12 @@ const ANTHROPIC_MODEL_PRICING_PER_MTOK = {
     cacheWrite: 12.5,
     cacheRead: 1,
   },
+  "claude-opus-5": {
+    input: 5,
+    output: 25,
+    cacheWrite: 6.25,
+    cacheRead: 0.5,
+  },
   "claude-opus-4-8": {
     input: 5,
     output: 25,
@@ -71,12 +77,6 @@ const ANTHROPIC_MODEL_PRICING_PER_MTOK = {
     cacheWrite: 18.75,
     cacheRead: 1.5,
   },
-  "claude-sonnet-5": {
-    input: 3,
-    output: 15,
-    cacheWrite: 3.75,
-    cacheRead: 0.3,
-  },
   "claude-sonnet-4-6": {
     input: 3,
     output: 15,
@@ -115,6 +115,10 @@ const ANTHROPIC_MODEL_PRICING_PER_MTOK = {
   },
 };
 
+export function sonnet5PricingAt(_at = new Date()) {
+  return { input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2 };
+}
+
 const OPENAI_MODEL_PRICING_PER_MTOK = {
   "gpt-5.6-sol": {
     input: 5,
@@ -123,16 +127,16 @@ const OPENAI_MODEL_PRICING_PER_MTOK = {
     cacheRead: 0.5,
   },
   "gpt-5.6-terra": {
-    input: 2.5,
-    output: 15,
-    cacheWrite: 3.125,
-    cacheRead: 0.25,
+    input: 2,
+    output: 12,
+    cacheWrite: 2.5,
+    cacheRead: 0.2,
   },
   "gpt-5.6-luna": {
-    input: 1,
-    output: 6,
-    cacheWrite: 1.25,
-    cacheRead: 0.1,
+    input: 0.2,
+    output: 1.2,
+    cacheWrite: 0.25,
+    cacheRead: 0.02,
   },
   "gpt-5.5": {
     input: 5,
@@ -176,11 +180,17 @@ const OPENAI_MODEL_PRICING_PER_MTOK = {
 // publish a separate cache-write rate for these models, so cache writes use
 // the base input rate when a caller reports them.
 const XAI_MODEL_PRICING_PER_MTOK = {
-  "grok-4.5": {
+  "grok-4.6": {
     input: 2,
     output: 6,
     cacheWrite: 2,
     cacheRead: 0.5,
+  },
+  "grok-4.5": {
+    input: 2,
+    output: 6,
+    cacheWrite: 2,
+    cacheRead: 0.3,
   },
   "grok-4.3": {
     input: 1.25,
@@ -193,6 +203,15 @@ const XAI_MODEL_PRICING_PER_MTOK = {
     output: 2,
     cacheWrite: 1,
     cacheRead: 0.2,
+  },
+};
+
+const MOONSHOT_MODEL_PRICING_PER_MTOK = {
+  "kimi-k3": {
+    input: 3,
+    output: 15,
+    cacheWrite: 3,
+    cacheRead: 0.3,
   },
 };
 
@@ -243,13 +262,13 @@ const FIREWORKS_MODEL_PRICING_PER_MTOK = {
     input: 0.15,
     output: 0.6,
     cacheWrite: 0.15,
-    cacheRead: 0.01,
+    cacheRead: 0.015,
   },
   "minimax-m3": {
-    input: 0.4,
-    output: 1.6,
-    cacheWrite: 0.4,
-    cacheRead: 0.08,
+    input: 0.3,
+    output: 1.2,
+    cacheWrite: 0.3,
+    cacheRead: 0.06,
   },
   "minimax-m2p7": {
     input: 0.3,
@@ -261,7 +280,7 @@ const FIREWORKS_MODEL_PRICING_PER_MTOK = {
     input: 1.4,
     output: 4.4,
     cacheWrite: 1.4,
-    cacheRead: 0.26,
+    cacheRead: 0.14,
   },
   "glm-5p1": {
     input: 1.4,
@@ -280,6 +299,18 @@ const FIREWORKS_MODEL_PRICING_PER_MTOK = {
     output: 3.0,
     cacheWrite: 0.5,
     cacheRead: 0.1,
+  },
+  "deepseek-v4-pro": {
+    input: 1.74,
+    output: 3.48,
+    cacheWrite: 1.74,
+    cacheRead: 0.145,
+  },
+  "deepseek-v4-flash": {
+    input: 0.14,
+    output: 0.28,
+    cacheWrite: 0.14,
+    cacheRead: 0.028,
   },
 };
 
@@ -332,28 +363,28 @@ const GOOGLE_MODEL_PRICING_PER_MTOK = {
 
 const DEEPSEEK_MODEL_PRICING_PER_MTOK = {
   "deepseek-v4-pro": {
-    input: 1.74,
-    output: 3.48,
-    cacheWrite: 1.74,
-    cacheRead: 0.145,
+    input: 0.435,
+    output: 0.87,
+    cacheWrite: 0.435,
+    cacheRead: 0.003625,
   },
   "deepseek-v4-flash": {
     input: 0.14,
     output: 0.28,
     cacheWrite: 0.14,
-    cacheRead: 0.028,
+    cacheRead: 0.0028,
   },
   "deepseek-chat": {
     input: 0.14,
     output: 0.28,
     cacheWrite: 0.14,
-    cacheRead: 0.028,
+    cacheRead: 0.0028,
   },
   "deepseek-reasoner": {
     input: 0.14,
     output: 0.28,
     cacheWrite: 0.14,
-    cacheRead: 0.028,
+    cacheRead: 0.0028,
   },
 };
 
@@ -363,16 +394,23 @@ function normalizeModelKey(model) {
     ? modelKey.slice("openai/".length)
     : modelKey.startsWith("xai/")
       ? modelKey.slice("xai/".length)
-    : modelKey.startsWith("deepseek/")
-      ? modelKey.slice("deepseek/".length)
-      : modelKey;
-  const fireworksModel = unprefixed.match(/^accounts\/fireworks\/models\/(.+)$/);
+      : modelKey.startsWith("moonshot/")
+        ? modelKey.slice("moonshot/".length)
+        : modelKey.startsWith("deepseek/")
+          ? modelKey.slice("deepseek/".length)
+          : modelKey;
+  const fireworksModel = unprefixed.match(
+    /^accounts\/fireworks\/models\/(.+)$/,
+  );
   if (fireworksModel) return fireworksModel[1];
-  const fireworksRouter = unprefixed.match(/^accounts\/fireworks\/routers\/(.+)$/);
+  const fireworksRouter = unprefixed.match(
+    /^accounts\/fireworks\/routers\/(.+)$/,
+  );
   if (fireworksRouter) return fireworksRouter[1];
   if (unprefixed === "gpt-5.6") return "gpt-5.6-sol";
   const auraClaude = unprefixed.match(/^aura-(claude-.+)$/);
   if (auraClaude) return auraClaude[1];
+  if (unprefixed === "aura-kimi-k3") return "kimi-k3";
   const auraFireworksModels = {
     "aura-kimi-k2-7-code": "kimi-k2p7-code",
     "aura-kimi-k2-6": "kimi-k2p6",
@@ -392,6 +430,7 @@ function normalizeModelKey(model) {
   };
   if (auraDeepSeekModels[unprefixed]) return auraDeepSeekModels[unprefixed];
   const auraXaiModels = {
+    "aura-grok-4-6": "grok-4.6",
     "aura-grok-4-5": "grok-4.5",
     "aura-grok-4-3": "grok-4.3",
     "aura-grok-build-0-1": "grok-build-0.1",
@@ -418,14 +457,27 @@ function normalizeModelKey(model) {
 }
 
 function inferProvider(model, provider) {
-  if (typeof provider === "string" && provider.trim()) return provider.trim().toLowerCase();
+  if (
+    typeof model === "string" &&
+    (model.trim().toLowerCase().startsWith("aura-deepseek-v4-") ||
+      model.trim().toLowerCase().startsWith("accounts/fireworks/"))
+  ) {
+    return "fireworks";
+  }
+  if (typeof provider === "string" && provider.trim())
+    return provider.trim().toLowerCase();
   const modelKey = normalizeModelKey(model);
   if (modelKey.startsWith("claude")) return "anthropic";
   if (modelKey.startsWith("grok")) return "xai";
-  if (modelKey.startsWith("deepseek-v4") || modelKey === "deepseek-chat" || modelKey === "deepseek-reasoner") {
+  if (
+    modelKey.startsWith("deepseek-v4") ||
+    modelKey === "deepseek-chat" ||
+    modelKey === "deepseek-reasoner"
+  ) {
     return "deepseek";
   }
   if (modelKey.startsWith("gemini")) return "google";
+  if (modelKey === "kimi-k3") return "moonshot";
   if (
     modelKey.startsWith("kimi") ||
     modelKey.startsWith("gpt-oss") ||
@@ -435,13 +487,30 @@ function inferProvider(model, provider) {
   ) {
     return "fireworks";
   }
-  if (modelKey.startsWith("gpt") || modelKey.startsWith("o1") || modelKey.startsWith("o3")) {
+  if (
+    modelKey.startsWith("gpt") ||
+    modelKey.startsWith("o1") ||
+    modelKey.startsWith("o3")
+  ) {
     return "openai";
   }
   return null;
 }
 
-function findAnthropicPricing(modelKey) {
+function findAnthropicPricing(modelKey, at) {
+  if (
+    modelKey === "claude-sonnet-5" ||
+    modelKey.startsWith("claude-sonnet-5-")
+  ) {
+    return {
+      model: "claude-sonnet-5",
+      source:
+        modelKey === "claude-sonnet-5"
+          ? "anthropic-pricing"
+          : "anthropic-pricing-family-match",
+      ...sonnet5PricingAt(at),
+    };
+  }
   const exactMatch = ANTHROPIC_MODEL_PRICING_PER_MTOK[modelKey];
   if (exactMatch) {
     return {
@@ -451,8 +520,9 @@ function findAnthropicPricing(modelKey) {
     };
   }
 
-  const partialEntry = Object.entries(ANTHROPIC_MODEL_PRICING_PER_MTOK).find(([candidate]) =>
-    modelKey.startsWith(candidate) || candidate.startsWith(modelKey),
+  const partialEntry = Object.entries(ANTHROPIC_MODEL_PRICING_PER_MTOK).find(
+    ([candidate]) =>
+      modelKey.startsWith(candidate) || candidate.startsWith(modelKey),
   );
   if (!partialEntry) return null;
 
@@ -474,8 +544,9 @@ function findOpenAIPricing(modelKey) {
     };
   }
 
-  const partialEntry = Object.entries(OPENAI_MODEL_PRICING_PER_MTOK).find(([candidate]) =>
-    modelKey.startsWith(candidate) || candidate.startsWith(modelKey),
+  const partialEntry = Object.entries(OPENAI_MODEL_PRICING_PER_MTOK).find(
+    ([candidate]) =>
+      modelKey.startsWith(candidate) || candidate.startsWith(modelKey),
   );
   if (!partialEntry) return null;
 
@@ -497,8 +568,9 @@ function findXaiPricing(modelKey) {
     };
   }
 
-  const partialEntry = Object.entries(XAI_MODEL_PRICING_PER_MTOK).find(([candidate]) =>
-    modelKey.startsWith(candidate) || candidate.startsWith(modelKey),
+  const partialEntry = Object.entries(XAI_MODEL_PRICING_PER_MTOK).find(
+    ([candidate]) =>
+      modelKey.startsWith(candidate) || candidate.startsWith(modelKey),
   );
   if (!partialEntry) return null;
 
@@ -520,8 +592,9 @@ function findFireworksPricing(modelKey) {
     };
   }
 
-  const partialEntry = Object.entries(FIREWORKS_MODEL_PRICING_PER_MTOK).find(([candidate]) =>
-    modelKey.startsWith(candidate) || candidate.startsWith(modelKey),
+  const partialEntry = Object.entries(FIREWORKS_MODEL_PRICING_PER_MTOK).find(
+    ([candidate]) =>
+      modelKey.startsWith(candidate) || candidate.startsWith(modelKey),
   );
   if (!partialEntry) return null;
 
@@ -530,6 +603,16 @@ function findFireworksPricing(modelKey) {
     model: matchedModel,
     source: "fireworks-pricing-family-match",
     ...pricing,
+  };
+}
+
+function findMoonshotPricing(modelKey) {
+  const exactMatch = MOONSHOT_MODEL_PRICING_PER_MTOK[modelKey];
+  if (!exactMatch) return null;
+  return {
+    model: modelKey,
+    source: "moonshot-pricing",
+    ...exactMatch,
   };
 }
 
@@ -543,8 +626,9 @@ function findDeepSeekPricing(modelKey) {
     };
   }
 
-  const partialEntry = Object.entries(DEEPSEEK_MODEL_PRICING_PER_MTOK).find(([candidate]) =>
-    modelKey.startsWith(candidate) || candidate.startsWith(modelKey),
+  const partialEntry = Object.entries(DEEPSEEK_MODEL_PRICING_PER_MTOK).find(
+    ([candidate]) =>
+      modelKey.startsWith(candidate) || candidate.startsWith(modelKey),
   );
   if (!partialEntry) return null;
 
@@ -568,8 +652,9 @@ function findGooglePricing(modelKey) {
 
   // Preview strings (e.g. `gemini-3.1-pro-preview`) fold onto the flat
   // stable pricing key via this prefix match.
-  const partialEntry = Object.entries(GOOGLE_MODEL_PRICING_PER_MTOK).find(([candidate]) =>
-    modelKey.startsWith(candidate) || candidate.startsWith(modelKey),
+  const partialEntry = Object.entries(GOOGLE_MODEL_PRICING_PER_MTOK).find(
+    ([candidate]) =>
+      modelKey.startsWith(candidate) || candidate.startsWith(modelKey),
   );
   if (!partialEntry) return null;
 
@@ -581,11 +666,11 @@ function findGooglePricing(modelKey) {
   };
 }
 
-export function resolvePricing(model, provider) {
+export function resolvePricing(model, provider, at = new Date()) {
   const inferredProvider = inferProvider(model, provider);
   const modelKey = normalizeModelKey(model);
   if (inferredProvider === "anthropic") {
-    const pricing = findAnthropicPricing(modelKey);
+    const pricing = findAnthropicPricing(modelKey, at);
     if (pricing) {
       return {
         provider: inferredProvider,
@@ -606,6 +691,16 @@ export function resolvePricing(model, provider) {
 
   if (inferredProvider === "xai") {
     const pricing = findXaiPricing(modelKey);
+    if (pricing) {
+      return {
+        provider: inferredProvider,
+        ...pricing,
+      };
+    }
+  }
+
+  if (inferredProvider === "moonshot") {
+    const pricing = findMoonshotPricing(modelKey);
     if (pricing) {
       return {
         provider: inferredProvider,
@@ -655,8 +750,35 @@ export function resolvePricing(model, provider) {
   };
 }
 
+function applyLongContextPricing(pricing, inputTokens) {
+  const openAiLongContext =
+    pricing.provider === "openai" &&
+    inputTokens > 272_000 &&
+    (pricing.model === "gpt-5.4" ||
+      pricing.model === "gpt-5.5" ||
+      pricing.model.startsWith("gpt-5.6"));
+  const xaiLongContext = pricing.provider === "xai" && inputTokens >= 200_000;
+  const googleLongContext =
+    pricing.provider === "google" &&
+    inputTokens > 200_000 &&
+    (pricing.model === "gemini-3.1-pro" || pricing.model === "gemini-2.5-pro");
+
+  if (!openAiLongContext && !xaiLongContext && !googleLongContext)
+    return pricing;
+  return {
+    ...pricing,
+    input: pricing.input * 2,
+    cacheWrite: pricing.cacheWrite * 2,
+    cacheRead: pricing.cacheRead * 2,
+    output: pricing.output * (xaiLongContext ? 2 : 1.5),
+  };
+}
+
 export function calculateEstimatedCostUsd(usage) {
-  const pricing = resolvePricing(usage.model, usage.provider);
+  const pricing = applyLongContextPricing(
+    resolvePricing(usage.model, usage.provider),
+    usage.inputTokens,
+  );
   const cacheInputTokens =
     usage.cacheCreationInputTokens + usage.cacheReadInputTokens;
   // OpenAI-compatible providers and Google report cached tokens within the
@@ -664,6 +786,7 @@ export function calculateEstimatedCostUsd(usage) {
   const inputIncludesCacheTokens =
     pricing.provider === "openai" ||
     pricing.provider === "xai" ||
+    pricing.provider === "moonshot" ||
     pricing.provider === "fireworks" ||
     pricing.provider === "deepseek" ||
     pricing.provider === "google";
@@ -673,10 +796,10 @@ export function calculateEstimatedCostUsd(usage) {
       : usage.inputTokens;
 
   const estimatedCostUsd =
-    (inputTokens / 1_000_000) * pricing.input
-    + (usage.outputTokens / 1_000_000) * pricing.output
-    + (usage.cacheCreationInputTokens / 1_000_000) * pricing.cacheWrite
-    + (usage.cacheReadInputTokens / 1_000_000) * pricing.cacheRead;
+    (inputTokens / 1_000_000) * pricing.input +
+    (usage.outputTokens / 1_000_000) * pricing.output +
+    (usage.cacheCreationInputTokens / 1_000_000) * pricing.cacheWrite +
+    (usage.cacheReadInputTokens / 1_000_000) * pricing.cacheRead;
 
   return {
     estimatedCostUsd: Number(estimatedCostUsd.toFixed(6)),

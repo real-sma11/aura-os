@@ -41,6 +41,7 @@ export interface SpawnBrowserRequest {
   width: number;
   height: number;
   projectId?: string;
+  remoteAgentId?: string;
   initialUrl?: string;
 }
 
@@ -143,6 +144,57 @@ export interface NavError {
   http_status?: number | null;
 }
 
+export type InspectionKind = "hover" | "select";
+
+export interface ElementBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface ElementStyles {
+  display: string;
+  position: string;
+  color: string;
+  background_color: string;
+  font_family: string;
+  font_size: string;
+  font_weight: string;
+  line_height: string;
+  border_radius: string;
+  padding: string;
+  margin: string;
+}
+
+export interface ElementSource {
+  file: string;
+  line?: number | null;
+  column?: number | null;
+  component?: string | null;
+}
+
+/** Framework-neutral DOM context captured by Preview Design mode. */
+export interface DesignElement {
+  url: string;
+  tag_name: string;
+  id?: string | null;
+  classes: string[];
+  selector: string;
+  text: string;
+  outer_html: string;
+  bounds: ElementBounds;
+  styles: ElementStyles;
+  source?: ElementSource | null;
+  component_path: string[];
+}
+
+export interface InspectionResult {
+  request_id: number;
+  kind: InspectionKind;
+  element: DesignElement | null;
+}
+
 export type BrowserClientMsg =
   | { type: "navigate"; url: string }
   | { type: "back" }
@@ -174,11 +226,19 @@ export type BrowserClientMsg =
       y: number;
       delta_x: number;
       delta_y: number;
+    }
+  | {
+      type: "inspect";
+      request_id: number;
+      kind: InspectionKind;
+      x: number;
+      y: number;
     };
 
 export type BrowserServerTextEvent =
   | { type: "nav"; nav: NavState }
   | { type: "nav_error"; error: NavError }
+  | { type: "inspection"; inspection: InspectionResult }
   | { type: "exit"; code: number };
 
 export function isBrowserServerTextEvent(
@@ -195,6 +255,20 @@ export function isBrowserServerTextEvent(
     if (!err || typeof err !== "object") return false;
     const { url, error_text } = err as { url?: unknown; error_text?: unknown };
     return typeof url === "string" && typeof error_text === "string";
+  }
+  if (type === "inspection") {
+    const inspection = (value as { inspection?: unknown }).inspection;
+    if (!inspection || typeof inspection !== "object") return false;
+    const { request_id, kind, element } = inspection as {
+      request_id?: unknown;
+      kind?: unknown;
+      element?: unknown;
+    };
+    return (
+      typeof request_id === "number" &&
+      (kind === "hover" || kind === "select") &&
+      (element === null || typeof element === "object")
+    );
   }
   if (type === "exit") return true;
   return false;
@@ -221,6 +295,7 @@ export async function spawnBrowser(
     height: req.height,
   };
   if (req.projectId) body.project_id = req.projectId;
+  if (req.remoteAgentId) body.remote_agent_id = req.remoteAgentId;
   if (req.initialUrl) body.initial_url = req.initialUrl;
 
   const res = await fetch(resolveApiUrl("/api/browser"), {

@@ -19,6 +19,10 @@ pub(super) fn agent_routes() -> Router<AppState> {
                 .delete(agents::delete_agent),
         )
         .route(
+            "/api/agents/:agent_id/clone",
+            post(agents::clone_agent),
+        )
+        .route(
             "/api/agents/:agent_id/projects",
             get(agents::list_agent_project_bindings),
         )
@@ -93,6 +97,10 @@ pub(super) fn agent_routes() -> Router<AppState> {
         .route(
             "/api/agents/:agent_id/sessions/:session_id/events",
             get(agents::list_agent_session_events),
+        )
+        .route(
+            "/api/agents/:agent_id/sessions/:session_id/aside",
+            post(agents::ask_agent_session_aside),
         )
         .route(
             "/api/agents/:agent_id/sessions/:session_id/events/paginated",
@@ -180,12 +188,40 @@ pub(super) fn agent_routes() -> Router<AppState> {
             get(agents::get_session).delete(agents::delete_session),
         )
         .route(
+            "/api/projects/:project_id/agents/:agent_instance_id/sessions/:session_id/branch",
+            post(agents::branch_session),
+        )
+        .route(
+            "/api/projects/:project_id/agents/:agent_instance_id/sessions/:session_id/safe-workspace",
+            get(agents::get_safe_workspace_status),
+        )
+        .route(
+            "/api/projects/:project_id/agents/:agent_instance_id/safe-workspace-eligibility",
+            get(agents::get_safe_workspace_eligibility),
+        )
+        .route(
+            "/api/projects/:project_id/agents/:agent_instance_id/sessions/:session_id/safe-workspace/apply",
+            post(agents::apply_safe_workspace_to_project),
+        )
+        .route(
+            "/api/projects/:project_id/agents/:agent_instance_id/sessions/:session_id/safe-workspace/checkpoints/:checkpoint_id/diff",
+            get(agents::get_safe_workspace_checkpoint_diff),
+        )
+        .route(
+            "/api/projects/:project_id/agents/:agent_instance_id/sessions/:session_id/safe-workspace/checkpoints/:checkpoint_id/restore",
+            post(agents::restore_safe_workspace_checkpoint),
+        )
+        .route(
             "/api/projects/:project_id/agents/:agent_instance_id/sessions/:session_id/tasks",
             get(agents::list_session_tasks),
         )
         .route(
             "/api/projects/:project_id/agents/:agent_instance_id/sessions/:session_id/events",
             get(agents::list_session_events),
+        )
+        .route(
+            "/api/projects/:project_id/agents/:agent_instance_id/sessions/:session_id/aside",
+            post(agents::ask_instance_session_aside),
         )
         .route(
             "/api/projects/:project_id/agents/:agent_instance_id/sessions/:session_id/events/paginated",
@@ -208,4 +244,8 @@ pub(super) fn agent_routes() -> Router<AppState> {
             get(agents::list_project_sessions),
         )
         .route("/api/me/sessions", get(agents::list_my_sessions))
+        .route(
+            "/api/me/sessions/search",
+            get(agents::search_my_session_history),
+        )
 }

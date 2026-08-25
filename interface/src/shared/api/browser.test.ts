@@ -1,13 +1,19 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   decodeBinaryFrame,
   encodeFrameAck,
   FRAME_HEADER_LEN,
   FRAME_OPCODE,
   isBrowserServerTextEvent,
+  spawnBrowser,
 } from "./browser";
 
-function makeFrameBuffer(seq: number, w: number, h: number, payload: Uint8Array): ArrayBuffer {
+function makeFrameBuffer(
+  seq: number,
+  w: number,
+  h: number,
+  payload: Uint8Array,
+): ArrayBuffer {
   const buf = new ArrayBuffer(FRAME_HEADER_LEN + payload.length);
   const view = new DataView(buf);
   view.setUint8(0, FRAME_OPCODE);
@@ -46,12 +52,47 @@ describe("encodeFrameAck", () => {
   });
 });
 
+describe("spawnBrowser", () => {
+  it("sends the selected remote agent to the server", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "browser-1",
+          initial_url: null,
+          focus_address_bar: true,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    await spawnBrowser({
+      width: 1280,
+      height: 800,
+      projectId: "project-1",
+      remoteAgentId: "agent-1",
+    });
+
+    const init = fetchMock.mock.calls[0]?.[1];
+    expect(JSON.parse(String(init?.body))).toMatchObject({
+      project_id: "project-1",
+      remote_agent_id: "agent-1",
+    });
+    fetchMock.mockRestore();
+  });
+});
+
 describe("isBrowserServerTextEvent", () => {
   it("accepts a nav event", () => {
     expect(
       isBrowserServerTextEvent({
         type: "nav",
-        nav: { url: "http://localhost", title: null, can_go_back: false, can_go_forward: false, loading: false },
+        nav: {
+          url: "http://localhost",
+          title: null,
+          can_go_back: false,
+          can_go_forward: false,
+          loading: false,
+        },
       }),
     ).toBe(true);
   });
@@ -96,11 +137,30 @@ describe("isBrowserServerTextEvent", () => {
     ).toBe(true);
   });
 
+  it("accepts an element inspection event", () => {
+    expect(
+      isBrowserServerTextEvent({
+        type: "inspection",
+        inspection: {
+          request_id: 12,
+          kind: "select",
+          element: { selector: "#hero" },
+        },
+      }),
+    ).toBe(true);
+  });
+
   it("rejects garbage", () => {
     expect(isBrowserServerTextEvent(null)).toBe(false);
     expect(isBrowserServerTextEvent({ type: "other" })).toBe(false);
     expect(isBrowserServerTextEvent({ type: "nav" })).toBe(false);
     expect(isBrowserServerTextEvent({ type: "nav_error" })).toBe(false);
+    expect(
+      isBrowserServerTextEvent({
+        type: "inspection",
+        inspection: { request_id: "12", kind: "select", element: null },
+      }),
+    ).toBe(false);
     expect(
       isBrowserServerTextEvent({ type: "nav_error", error: { url: "x" } }),
     ).toBe(false);

@@ -4,24 +4,37 @@ import {
   triggerBrowserDetect,
   updateProjectBrowserSettings,
   type BrowserClientMsg,
+  type DesignElement,
   type DetectedUrl,
+  type InspectionResult,
   type NavError,
   type NavState,
   type ProjectBrowserSettings,
 } from "../../../../shared/api/browser";
 import { useBrowser } from "../../../../hooks/use-browser";
 import { useBrowserPanelStore } from "../../../../stores/browser-panel-store";
+import { ApiClientError } from "../../../../shared/api/core";
 import { BrowserAddressBar } from "../BrowserAddressBar";
+import { BrowserDesignInspector } from "../BrowserDesignInspector";
 import { BrowserErrorOverlay } from "../BrowserErrorOverlay";
 import { BrowserViewport } from "../BrowserViewport";
 import type { BrowserWorkerInMsg } from "../../../../workers/browser-frame-worker";
 import styles from "./BrowserInstance.module.css";
+import type { BrowserMode } from "../../design-mode";
+import { isDesktopRuntime } from "../../../../shared/lib/native-runtime";
+import {
+  buildPreviewErrorPrompt,
+  dispatchDesignPrompt,
+} from "../../../../shared/lib/design-context";
 
 export interface BrowserInstanceProps {
   clientId: string;
   projectId?: string;
+  remoteAgentId?: string;
   width: number;
   height: number;
+  mode?: BrowserMode;
+  deviceFrame?: boolean;
 }
 
 /**
@@ -30,14 +43,24 @@ export interface BrowserInstanceProps {
  * REST layer's JSON payload.
  */
 function friendlyBrowserError(err: Error): string {
-  const msg = err.message.toLowerCase();
-  if (
-    msg.includes("chromium_launch") ||
-    msg.includes("chrome") ||
-    msg.includes("no such file")
-  ) {
-    return "Could not start Chromium. Install Google Chrome or Chromium, or set BROWSER_EXECUTABLE_PATH.";
+  const launchDetails =
+    err instanceof ApiClientError ? err.body.details?.trim() : err.message;
+  const launchFailure =
+    err instanceof ApiClientError
+      ? err.body.code === "browser_launch_failed"
+      : err.message.toLowerCase().includes("chromium_launch") ||
+        err.message.toLowerCase().includes("chromium_config") ||
+        err.message.toLowerCase().includes("chrome") ||
+        err.message.toLowerCase().includes("no such file");
+
+  if (launchFailure) {
+    const guidance = isDesktopRuntime()
+      ? "Could not start a supported browser. Open Settings > Advanced and choose Microsoft Edge, Google Chrome, or Chromium."
+      : "Preview is temporarily unavailable because AURA's hosted browser could not start. Please try again shortly or contact your AURA administrator.";
+    return launchDetails ? `${guidance} Details: ${launchDetails}` : guidance;
   }
+
+  const msg = err.message.toLowerCase();
   if (msg.includes("network") || msg.includes("websocket")) {
     return "Lost connection to the browser backend. Retrying…";
   }
@@ -62,8 +85,11 @@ function mergeDetected(
 export function BrowserInstance({
   clientId,
   projectId,
+  remoteAgentId,
   width,
   height,
+  mode = "preview",
+  deviceFrame = false,
 }: BrowserInstanceProps) {
   const setServerId = useBrowserPanelStore((s) => s.setServerId);
   const setProjectSettings = useBrowserPanelStore((s) => s.setProjectSettings);
@@ -76,13 +102,25 @@ export function BrowserInstance({
   const [navError, setNavError] = useState<NavError | null>(null);
   const [recentDetected, setRecentDetected] = useState<DetectedUrl[]>([]);
   const [spawnError, setSpawnError] = useState<string | null>(null);
+  const [hoveredElement, setHoveredElement] = useState<DesignElement | null>(
+    null,
+  );
+  const [selectedElement, setSelectedElement] = useState<DesignElement | null>(
+    null,
+  );
+  const latestInspectionRef = useRef(0);
 
   const handleWorkerReady = useCallback((worker: Worker) => {
     workerRef.current = worker;
   }, []);
 
   const handleFrame = useCallback(
-    (frame: { seq: number; width: number; height: number; jpeg: Uint8Array }) => {
+    (frame: {
+      seq: number;
+      width: number;
+      height: number;
+      jpeg: Uint8Array;
+    }) => {
       const worker = workerRef.current;
       if (!worker) return;
       const copy = new Uint8Array(frame.jpeg.byteLength);
@@ -100,6 +138,8 @@ export function BrowserInstance({
 
   const handleNav = useCallback((state: NavState) => {
     setNav(state);
+    setHoveredElement(null);
+    setSelectedElement(null);
     // After a main-frame failure Chromium commits its own native error
     // document at a `chrome-error://...` URL and re-fires `Nav` for it;
     // clearing the overlay on that event would wipe it just as we set
@@ -117,13 +157,26 @@ export function BrowserInstance({
     setNavError(err);
   }, []);
 
+  const handleInspection = useCallback((inspection: InspectionResult) => {
+    if (inspection.request_id < latestInspectionRef.current) return;
+    latestInspectionRef.current = inspection.request_id;
+    if (inspection.kind === "select") {
+      setSelectedElement(inspection.element);
+      setHoveredElement(inspection.element);
+    } else {
+      setHoveredElement(inspection.element);
+    }
+  }, []);
+
   const browser = useBrowser({
     width,
     height,
     projectId,
+    remoteAgentId,
     onFrame: handleFrame,
     onNav: handleNav,
     onNavError: handleNavError,
+    onInspection: handleInspection,
     onSpawned: (resp) => {
       setServerId(clientId, resp.id);
       setSpawnError(null);
@@ -188,6 +241,16 @@ export function BrowserInstance({
     browser.send({ type: "reload" });
   }, [browser]);
 
+  const handleAskAgent = useCallback(
+    (error: NavError) => {
+      dispatchDesignPrompt({
+        projectId,
+        prompt: buildPreviewErrorPrompt(error),
+      });
+    },
+    [projectId],
+  );
+
   const handleSubmit = useCallback(
     (url: string) => {
       clearNavErrorAnd({ type: "navigate", url });
@@ -227,7 +290,12 @@ export function BrowserInstance({
     void triggerBrowserDetect(projectId)
       .then((detected) => {
         if (cancelled || detected.length === 0) return;
-        setRecentDetected((prev) => mergeDetected({ detected_urls: prev } as ProjectBrowserSettings, detected));
+        setRecentDetected((prev) =>
+          mergeDetected(
+            { detected_urls: prev } as ProjectBrowserSettings,
+            detected,
+          ),
+        );
       })
       .catch(() => {
         // Detection is advisory; ignore failures silently.
@@ -267,6 +335,10 @@ export function BrowserInstance({
         height={height}
         onWorkerReady={handleWorkerReady}
         onClientMsg={browser.send}
+        designMode={mode === "design"}
+        hoveredElement={hoveredElement}
+        selectedElement={selectedElement}
+        deviceFrame={deviceFrame}
         placeholder={
           spawnError
             ? spawnError
@@ -278,7 +350,17 @@ export function BrowserInstance({
         }
         overlay={
           navError ? (
-            <BrowserErrorOverlay error={navError} onReload={handleReload} />
+            <BrowserErrorOverlay
+              error={navError}
+              onAskAgent={handleAskAgent}
+              onReload={handleReload}
+            />
+          ) : mode === "design" ? (
+            <BrowserDesignInspector
+              element={selectedElement}
+              projectId={projectId}
+              onClear={() => setSelectedElement(null)}
+            />
           ) : null
         }
       />

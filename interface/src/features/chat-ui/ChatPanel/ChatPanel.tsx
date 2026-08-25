@@ -28,6 +28,7 @@ import type { DisplaySessionEvent } from "../../../shared/types/stream";
 import type { ContextUsageEntry } from "../../../stores/context-usage-store";
 import type { SessionBoundary } from "../../../hooks/use-prior-sessions";
 import type { LoadOlderPageFetcher } from "../../../hooks/use-load-older-messages";
+import type { ProjectPickerOption } from "../ChatInputBar/ProjectPicker";
 import styles from "./ChatPanel.module.css";
 
 type ChatPanelHandoffMode = "create-agent";
@@ -52,6 +53,7 @@ export interface ChatPanelProps {
     agentMentions?: AgentMentionTarget[],
   ) => void;
   onStop: () => void;
+  onAside?: (question: string) => Promise<string>;
   /**
    * Treat the chat as streaming even when our own SSE is idle. Used
    * when another subsystem (e.g. the automation loop) is holding a
@@ -75,6 +77,7 @@ export interface ChatPanelProps {
   focusInputOnThreadReady?: boolean;
   historyMessages?: DisplaySessionEvent[];
   projects?: Project[];
+  projectPickerOptions?: readonly ProjectPickerOption[];
   selectedProjectId?: string;
   /**
    * Project id sent as `body.project_id` on the wire. Defaults to
@@ -141,6 +144,7 @@ export function ChatPanel({
   transcriptKey,
   onSend,
   onStop,
+  onAside,
   isExternallyBusy = false,
   externalBusyMessage,
   agentName,
@@ -158,6 +162,7 @@ export function ChatPanel({
   focusInputOnThreadReady = true,
   historyMessages,
   projects,
+  projectPickerOptions,
   selectedProjectId,
   llmProjectId,
   onProjectChange,
@@ -252,6 +257,7 @@ export function ChatPanel({
           transcriptKey={transcriptKey}
           onSend={onSend}
           onStop={onStop}
+          onAside={onAside}
           isExternallyBusy={isExternallyBusy}
           externalBusyMessage={externalBusyMessage}
           agentName={agentName}
@@ -269,6 +275,7 @@ export function ChatPanel({
           focusInputOnThreadReady={focusInputOnThreadReady}
           historyMessages={historyMessages}
           projects={projects}
+          projectPickerOptions={projectPickerOptions}
           selectedProjectId={selectedProjectId}
           llmProjectId={llmProjectId}
           onProjectChange={onProjectChange}

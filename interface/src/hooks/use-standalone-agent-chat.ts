@@ -28,6 +28,7 @@ import { useChatUIStore } from "../stores/chat-ui-store";
 import { useHydrateContextUtilization } from "./use-hydrate-context-utilization";
 import { usePriorSessions } from "./use-prior-sessions";
 import { useAuraCapabilities } from "./use-aura-capabilities";
+import { keyForAgentSession } from "./stream/store";
 import type { ChatPanelProps } from "../apps/chat/components/ChatPanel";
 import type { AgentInstance, Project } from "../shared/types";
 
@@ -115,10 +116,9 @@ export function useStandaloneAgentChat(
   opts: {
     freshCanvasPending?: boolean;
     freshCanvasKey?: string | null;
-    onFreshSendStarted?: () => void;
   } = {},
 ): ChatPanelProps {
-  const { remoteOnly } = useAuraCapabilities();
+  const { hasDesktopBridge, remoteOnly } = useAuraCapabilities();
   const agentProjects = useProjectsListStore(useShallow(selectProjectsForAgent(agentId)));
   const [, setSearchParams] = useSearchParams();
 
@@ -234,10 +234,6 @@ export function useStandaloneAgentChat(
   // `/chat?fresh=...` route. The next send inserts the optimistic row;
   // `SessionReady` later swaps that placeholder id for the real one.
   const pendingOptimisticArmedRef = useRef(false);
-  const onFreshSendStartedRef = useRef(opts.onFreshSendStarted);
-  useEffect(() => {
-    onFreshSendStartedRef.current = opts.onFreshSendStarted;
-  }, [opts.onFreshSendStarted]);
   // Mirror `agentId` and the project binding via refs so the
   // `SessionReady`-side reconciliation doesn't ride along in
   // `handleSessionReady`'s deps. The chat input bar's `onSend`/internal
@@ -328,7 +324,9 @@ export function useStandaloneAgentChat(
     useStandaloneAgentMeta(agentId);
   const sendDisabled = remoteOnly && machineType === "local";
   const sendDisabledReason = sendDisabled
-    ? "This local agent is not available in this browser."
+    ? hasDesktopBridge
+      ? "The local agent runtime is unavailable. Restart Aura to retry recovery."
+      : "This local agent is not available in this browser."
     : undefined;
 
   const contextUsage = useContextUsage(streamKey);
@@ -478,6 +476,16 @@ export function useStandaloneAgentChat(
     const { resetCouncil, resetAnswerStrategy } = useChatUIStore.getState();
     resetCouncil(streamKey);
     resetAnswerStrategy(streamKey);
+    // `streamKey` still points at the historical session until the URL
+    // update below re-renders this hook onto the deterministic fresh lane.
+    // Clear that destination eagerly as well. Besides making the reset
+    // synchronous, this repairs stale `agent:<id>:fresh` preferences left
+    // by builds that predate persisted-partition migration.
+    const freshStreamKey = keyForAgentSession(agentId, null);
+    if (freshStreamKey !== streamKey) {
+      resetCouncil(freshStreamKey);
+      resetAnswerStrategy(freshStreamKey);
+    }
     const ctxStore = useContextUsageStore.getState();
     ctxStore.clearContextUtilization(streamKey);
     ctxStore.markResetPending(streamKey);
@@ -505,6 +513,23 @@ export function useStandaloneAgentChat(
     return (signal?: AbortSignal) =>
       api.agents.getContextContents(agentId, { signal });
   }, [agentId]);
+
+  const askAside = useCallback(
+    async (question: string) => {
+      if (!agentId || !pinnedSessionId) {
+        throw new Error(
+          "Start the main conversation before asking a side question.",
+        );
+      }
+      const response = await api.agents.askSessionAside(
+        agentId,
+        pinnedSessionId,
+        question,
+      );
+      return response.answer;
+    },
+    [agentId, pinnedSessionId],
+  );
 
   const { historyMessages, historyResolved, isLoading, historyError, wrapSend } =
     useChatHistorySync({
@@ -611,7 +636,6 @@ export function useStandaloneAgentChat(
       (...args: Parameters<typeof wrappedSendBase>) => {
         if (pendingOptimisticArmedRef.current) {
           pendingOptimisticArmedRef.current = false;
-          onFreshSendStartedRef.current?.();
           pendingOptimisticIdRef.current = insertOptimisticSessionRow();
         }
         return wrappedSendBase(...args);
@@ -631,6 +655,7 @@ export function useStandaloneAgentChat(
     transcriptKey: historyKey,
     onSend: wrappedSend,
     onStop: stopStreaming,
+    onAside: askAside,
     agentName,
     machineType,
     sendDisabled,

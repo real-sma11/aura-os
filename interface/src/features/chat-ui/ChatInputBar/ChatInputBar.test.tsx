@@ -448,6 +448,39 @@ describe("ChatInputBar", () => {
     expect(onSend).toHaveBeenCalledWith("click test", undefined, undefined);
   });
 
+  it("routes /btw to an ephemeral aside instead of the main chat", async () => {
+    const onSend = vi.fn();
+    const onAside = vi.fn();
+    const onInputChange = vi.fn();
+    const onCommandsChange = vi.fn();
+    render(
+      <ChatInputBar
+        {...makeProps({
+          input: "  What does that acronym mean?  ",
+          onInputChange,
+          onSend,
+          onAside,
+          onCommandsChange,
+          selectedCommands: [
+            {
+              id: "btw",
+              label: "BTW",
+              description: "Ask a quick side question",
+              category: "Core",
+            },
+          ],
+        })}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(onAside).toHaveBeenCalledWith("What does that acronym mean?");
+    expect(onSend).not.toHaveBeenCalled();
+    expect(onInputChange).toHaveBeenCalledWith("");
+    expect(onCommandsChange).toHaveBeenCalledWith([]);
+  });
+
   it("shows stop button when streaming", () => {
     mockIsStreaming = true;
     render(<ChatInputBar {...makeProps()} />);
@@ -576,6 +609,7 @@ describe("ChatInputBar", () => {
     expect(screen.queryByText("Open Source")).not.toBeInTheDocument();
 
     // Models that used to be hidden behind "Show all" are visible now.
+    expect(screen.getAllByText("Kimi K3")[0]).toBeInTheDocument();
     expect(screen.getAllByText("Kimi K2.6")[0]).toBeInTheDocument();
     expect(screen.getAllByText("Haiku 4.5")[0]).toBeInTheDocument();
     // GPT-OSS 120B now lives in the OpenAI section.
@@ -1180,6 +1214,34 @@ describe("ChatInputBar", () => {
       undefined,
       [{ agent_id: "agent-maya", agent_instance_id: "instance-maya" }],
     );
+  });
+
+  it("routes mobile /btw questions outside the main transcript", async () => {
+    const onSend = vi.fn();
+    const onAside = vi.fn();
+    render(
+      <MobileChatInputBar
+        {...makeProps({
+          input: "Is that API public?",
+          onSend,
+          onAside,
+          onCommandsChange: vi.fn(),
+          selectedCommands: [
+            {
+              id: "btw",
+              label: "BTW",
+              description: "Ask a quick side question",
+              category: "Core",
+            },
+          ],
+        })}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(onAside).toHaveBeenCalledWith("Is that API public?");
+    expect(onSend).not.toHaveBeenCalled();
   });
 
   it("uses sendDisabled to block mobile local-agent sends", async () => {

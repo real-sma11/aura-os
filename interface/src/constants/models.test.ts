@@ -14,6 +14,15 @@ import {
   persistModel,
   type ModelOption,
 } from "./models";
+import { resolvePricing } from "./model-pricing";
+
+describe("managed model pricing coverage", () => {
+  it("has a current rate card for every selectable chat model", () => {
+    for (const model of AURA_MANAGED_CHAT_MODELS) {
+      expect(resolvePricing(model.id).source, model.id).not.toBe("unknown-pricing");
+    }
+  });
+});
 
 describe("model persistence", () => {
   let store: Record<string, string>;
@@ -118,7 +127,9 @@ describe("model persistence", () => {
 
   it("normalizes the GPT-5.6 family to Aura-managed chat models", () => {
     expect(loadPersistedModel("default", "gpt-5.6")).toBe("aura-gpt-5-6-sol");
-    expect(loadPersistedModel("default", "gpt-5.6-sol")).toBe("aura-gpt-5-6-sol");
+    expect(loadPersistedModel("default", "gpt-5.6-sol")).toBe(
+      "aura-gpt-5-6-sol",
+    );
     expect(loadPersistedModel("default", "gpt-5.6-terra")).toBe(
       "aura-gpt-5-6-terra",
     );
@@ -129,6 +140,10 @@ describe("model persistence", () => {
 
   it("normalizes raw Grok model ids to Aura-managed chat models", () => {
     expect(loadPersistedModel("default", "grok-4.5")).toBe("aura-grok-4-5");
+    expect(loadPersistedModel("default", "grok-4.6")).toBe("aura-grok-4-6");
+    expect(loadPersistedModel("default", "xai/grok-4.6")).toBe(
+      "aura-grok-4-6",
+    );
     expect(loadPersistedModel("default", "grok-4.3")).toBe("aura-grok-4-3");
     expect(loadPersistedModel("default", "grok-build-0.1")).toBe(
       "aura-grok-build-0-1",
@@ -144,6 +159,55 @@ describe("model persistence", () => {
     );
   });
 
+  it("normalizes raw Claude Opus 5 to the Aura-managed chat model", () => {
+    expect(loadPersistedModel("default", "claude-opus-5")).toBe(
+      "aura-claude-opus-5",
+    );
+  });
+
+  it("includes Claude Opus 5 with its full adaptive-thinking ladder", () => {
+    const opus = availableModelsForAdapter("default").find(
+      (model) => model.id === "aura-claude-opus-5",
+    );
+
+    expect(opus).toMatchObject({
+      label: "Opus 5",
+      vendor: "anthropic",
+      creditMultiplier: 5,
+      contextWindow: 1_000_000,
+      defaultEffort: "high",
+    });
+    expect(opus?.efforts).toEqual(["low", "medium", "high", "xhigh", "max"]);
+  });
+
+  it("includes Kimi K3 with Moonshot's native capabilities", () => {
+    expect(loadPersistedModel("default", "kimi-k3")).toBe("aura-kimi-k3");
+    expect(loadPersistedModel("default", "moonshot/kimi-k3")).toBe(
+      "aura-kimi-k3",
+    );
+
+    const kimi = AURA_MANAGED_CHAT_MODELS.find(
+      (model) => model.id === "aura-kimi-k3",
+    );
+    expect(kimi).toMatchObject({
+      label: "Kimi K3",
+      tier: "opus",
+      vendor: "moonshot",
+      provider: "Moonshot AI",
+      creditMultiplier: 3,
+      contextWindow: 1_048_576,
+      efforts: ["low", "high", "max"],
+      defaultEffort: "max",
+      featured: true,
+    });
+    expect(
+      AURA_MANAGED_CHAT_MODELS.some((model) => model.id === "aura-kimi-k2-5"),
+    ).toBe(false);
+    expect(loadPersistedModel("default", "kimi-k2p5")).toBe(
+      "aura-kimi-k2-6",
+    );
+  });
+
   it("includes Claude Fable 5 in the Anthropic chat model list", () => {
     const fable = availableModelsForAdapter("default").find(
       (model) => model.id === "aura-claude-fable-5",
@@ -154,9 +218,9 @@ describe("model persistence", () => {
       vendor: "anthropic",
       creditMultiplier: 10,
       contextWindow: 1_000_000,
+      defaultEffort: "high",
     });
-    expect(fable?.efforts).toBeUndefined();
-    expect(fable?.defaultEffort).toBeUndefined();
+    expect(fable?.efforts).toEqual(["low", "medium", "high", "xhigh", "max"]);
   });
 
   it("restores a persisted Claude Fable 5 selection now that it is available", () => {
@@ -326,7 +390,10 @@ describe("effort-scaled credits", () => {
       // (2000 + 4096) / (2000 + 10000) = 6096 / 12000.
       expect(effortCreditFactor("low", "medium")).toBeCloseTo(6096 / 12000, 6);
       // (2000 + 24000) / (2000 + 10000) = 26000 / 12000.
-      expect(effortCreditFactor("high", "medium")).toBeCloseTo(26000 / 12000, 6);
+      expect(effortCreditFactor("high", "medium")).toBeCloseTo(
+        26000 / 12000,
+        6,
+      );
     });
   });
 
@@ -404,26 +471,60 @@ describe("reasoning-effort validity per model", () => {
     }
   });
 
+  it("offers every Opus 5 effort tier and defaults to Anthropic's high tier", () => {
+    const model = AURA_MANAGED_CHAT_MODELS.find(
+      (candidate) => candidate.id === "aura-claude-opus-5",
+    );
+    expect(model?.efforts).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    expect(model?.defaultEffort).toBe("high");
+  });
+
+  it("matches current Claude context windows and xhigh availability", () => {
+    for (const id of [
+      "aura-claude-fable-5",
+      "aura-claude-opus-4-8",
+      "aura-claude-opus-4-7",
+      "aura-claude-sonnet-5",
+    ]) {
+      const model = AURA_MANAGED_CHAT_MODELS.find(
+        (candidate) => candidate.id === id,
+      );
+      expect(model?.contextWindow, id).toBe(1_000_000);
+      expect(model?.efforts, id).toContain("xhigh");
+    }
+    expect(
+      AURA_MANAGED_CHAT_MODELS.find(
+        (model) => model.id === "aura-claude-opus-4-6",
+      )?.contextWindow,
+    ).toBe(1_000_000);
+  });
+
   it("offers the GPT-5.4/5.5 effort ladder", () => {
-    for (const id of ["aura-gpt-5-4", "aura-gpt-5-4-mini", "aura-gpt-5-4-nano"]) {
+    for (const id of [
+      "aura-gpt-5-4",
+      "aura-gpt-5-4-mini",
+      "aura-gpt-5-4-nano",
+    ]) {
       const model = AURA_MANAGED_CHAT_MODELS.find((m) => m.id === id);
       expect(model, `${id} should exist`).toBeDefined();
-      expect(model?.efforts ?? []).toEqual(["minimal", "low", "medium", "high", "xhigh"]);
+      expect(model?.efforts ?? []).toEqual([
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+      ]);
     }
-    expect(AURA_MANAGED_CHAT_MODELS.find((m) => m.id === "aura-gpt-5-5")?.efforts).toEqual([
-      "minimal",
-      "low",
-      "medium",
-      "high",
-      "xhigh",
-    ]);
+    expect(
+      AURA_MANAGED_CHAT_MODELS.find((m) => m.id === "aura-gpt-5-5")?.efforts,
+    ).toEqual(["minimal", "low", "medium", "high", "xhigh"]);
   });
 
   it("offers all six native GPT-5.6 reasoning efforts and correct multipliers", () => {
     for (const [id, multiplier] of [
       ["aura-gpt-5-6-sol", 6],
-      ["aura-gpt-5-6-terra", 3],
-      ["aura-gpt-5-6-luna", 1.2],
+      ["aura-gpt-5-6-terra", 2.4],
+      ["aura-gpt-5-6-luna", 0.24],
     ] as const) {
       const model = AURA_MANAGED_CHAT_MODELS.find((m) => m.id === id);
       expect(model, `${id} should exist`).toBeDefined();
@@ -441,8 +542,29 @@ describe("reasoning-effort validity per model", () => {
         "xhigh",
         "max",
       ]);
-      expect(effectiveCreditMultiplier(model!, model!.defaultEffort)).toBe(multiplier);
+      expect(effectiveCreditMultiplier(model!, model!.defaultEffort)).toBe(
+        multiplier,
+      );
     }
+  });
+
+  it("hides Fireworks models that have left serverless availability", () => {
+    const ids = AURA_MANAGED_CHAT_MODELS.map((model) => model.id);
+    expect(ids).not.toContain("aura-kimi-k2-5");
+    expect(ids).not.toContain("aura-qwen3-6-plus");
+    expect(ids).toContain("aura-kimi-k2-7-code");
+    expect(ids).toContain("aura-qwen3-7-plus");
+    expect(
+      AURA_MANAGED_CHAT_MODELS.find((model) => model.id === "aura-minimax-m3")
+        ?.contextWindow,
+    ).toBe(512_000);
+  });
+
+  it("migrates deprecated Fireworks selections to their live successors", () => {
+    expect(loadPersistedModel("default", "aura-kimi-k2-5")).toBe("aura-kimi-k2-6");
+    expect(loadPersistedModel("default", "aura-qwen3-6-plus")).toBe(
+      "aura-qwen3-7-plus",
+    );
   });
 
   it("keeps GPT-5.5 pricing metadata aligned with the API rate card", () => {
@@ -453,23 +575,41 @@ describe("reasoning-effort validity per model", () => {
   });
 
   it("uses OpenAI's native no-reasoning default for the GPT-5.4 family", () => {
-    for (const id of ["aura-gpt-5-4", "aura-gpt-5-4-mini", "aura-gpt-5-4-nano"]) {
+    for (const id of [
+      "aura-gpt-5-4",
+      "aura-gpt-5-4-mini",
+      "aura-gpt-5-4-nano",
+    ]) {
       const model = AURA_MANAGED_CHAT_MODELS.find((m) => m.id === id);
       expect(model?.defaultEffort).toBe("minimal");
     }
   });
 
   it("maps Grok 4.3 onto the xAI reasoning effort ladder", () => {
-    const model = AURA_MANAGED_CHAT_MODELS.find((m) => m.id === "aura-grok-4-3");
+    const model = AURA_MANAGED_CHAT_MODELS.find(
+      (m) => m.id === "aura-grok-4-3",
+    );
     expect(model?.efforts ?? []).toEqual(["minimal", "low", "medium", "high"]);
     expect(model?.defaultEffort).toBe("low");
   });
 
   it("maps Grok 4.5 onto the current xAI reasoning effort ladder", () => {
-    const model = AURA_MANAGED_CHAT_MODELS.find((m) => m.id === "aura-grok-4-5");
+    const model = AURA_MANAGED_CHAT_MODELS.find(
+      (m) => m.id === "aura-grok-4-5",
+    );
     expect(model?.efforts ?? []).toEqual(["low", "medium", "high"]);
     expect(model?.defaultEffort).toBe("high");
     expect(model?.contextWindow).toBe(500_000);
+  });
+
+  it("maps Grok 4.6 onto xAI's full current reasoning effort ladder", () => {
+    const model = AURA_MANAGED_CHAT_MODELS.find(
+      (m) => m.id === "aura-grok-4-6",
+    );
+    expect(model?.efforts ?? []).toEqual(["low", "medium", "high", "xhigh"]);
+    expect(model?.defaultEffort).toBe("high");
+    expect(model?.contextWindow).toBe(500_000);
+    expect(model?.creditMultiplier).toBe(1.44);
   });
 
   it("offers Grok Build as a cheaper xAI model without effort controls", () => {

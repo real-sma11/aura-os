@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   AtSign,
   Trash2,
+  Copy,
   Sparkles,
 } from "lucide-react";
 import { useAgentSidekickStore, type AgentSidekickTab } from "../stores/agent-sidekick-store";
@@ -49,12 +50,13 @@ interface AgentSidekickTaskbarProps {
 }
 
 export function AgentSidekickTaskbar({ agent: agentOverride }: AgentSidekickTaskbarProps = {}) {
-  const { activeTab, setActiveTab, requestEdit, requestDelete } = useAgentSidekickStore(
+  const { activeTab, setActiveTab, requestEdit, requestDelete, requestClone } = useAgentSidekickStore(
     useShallow((s) => ({
       activeTab: s.activeTab,
       setActiveTab: s.setActiveTab,
       requestEdit: s.requestEdit,
       requestDelete: s.requestDelete,
+      requestClone: s.requestClone,
     })),
   );
   const { selectedAgent: storeSelectedAgent } = useSelectedAgent();
@@ -67,6 +69,7 @@ export function AgentSidekickTaskbar({ agent: agentOverride }: AgentSidekickTask
     () =>
       isOwnAgent
         ? [
+            { id: "clone", label: "Clone Agent", icon: <Copy size={14} /> },
             { id: "edit", label: "Edit", icon: <Pencil size={14} /> },
             { id: "delete", label: "Delete", icon: <Trash2 size={14} /> },
           ]
@@ -75,7 +78,8 @@ export function AgentSidekickTaskbar({ agent: agentOverride }: AgentSidekickTask
   );
 
   const handleAction = (id: string) => {
-    if (id === "edit") requestEdit();
+    if (id === "clone") requestClone();
+    else if (id === "edit") requestEdit();
     else if (id === "delete") requestDelete();
   };
 

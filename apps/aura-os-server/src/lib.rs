@@ -27,11 +27,13 @@ pub(crate) mod orchestration_store;
 pub(crate) mod persistence;
 pub(crate) mod process_automaton;
 pub(crate) mod reconciler;
+pub(crate) mod remote_preview;
 pub(crate) mod router;
 pub mod stability_metrics;
 pub(crate) mod state;
 pub(crate) mod sync_state;
 pub mod tool_action_rate_limit;
+pub(crate) mod trusted_router;
 pub(crate) mod usage_signals;
 pub(crate) mod workspace_index;
 

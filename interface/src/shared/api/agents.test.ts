@@ -107,6 +107,29 @@ describe("agentTemplatesApi", () => {
     );
   });
 
+  it("clone posts the name and destination machine type", async () => {
+    const clone = {
+      agent: { agent_id: "a2", machine_type: "local" },
+      copy_report: { copied: ["profile"], not_copied: ["secrets"] },
+    };
+    const fetchMock = mockFetch(200, clone);
+    globalThis.fetch = fetchMock;
+
+    const result = await agentTemplatesApi.clone("a1" as string, {
+      name: "source-copy",
+      machine_type: "local",
+    });
+
+    expect(result).toEqual(clone);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/agents/a1/clone",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ name: "source-copy", machine_type: "local" }),
+      }),
+    );
+  });
+
   it("listEvents fetches events with signal", async () => {
     const events = [{ id: "m1", content: "hello" }];
     const fetchMock = mockFetch(200, events);
@@ -298,6 +321,35 @@ describe("sessionsApi", () => {
     globalThis.fetch = fetchMock;
     await sessionsApi.listProjectSessions("p1" as string);
     expect(fetchMock).toHaveBeenCalledWith("/api/projects/p1/sessions", expect.any(Object));
+  });
+
+  it("times out Recall transport stalls after its 15 second client budget", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            "abort",
+            () => reject(new DOMException("Aborted", "AbortError")),
+            { once: true },
+          );
+        }));
+      globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
+
+      const request = sessionsApi.searchMySessionHistory("desktop recall", 7);
+      const rejection = expect(request).rejects.toThrow(
+        "The request timed out. Please try again.",
+      );
+      await vi.advanceTimersByTimeAsync(15_000);
+
+      await rejection;
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/me/sessions/search?q=desktop+recall&limit=7",
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("listSessions fetches by project and agent instance", async () => {

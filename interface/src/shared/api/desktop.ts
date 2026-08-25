@@ -88,6 +88,28 @@ export interface PersistDesktopRouteResponse {
   error?: string;
 }
 
+export type BrowserExecutableSource =
+  | "saved_setting"
+  | "process_environment"
+  | "user_environment"
+  | "automatic_discovery"
+  | "not_found"
+  | "unsupported";
+
+export interface BrowserExecutableStatus {
+  resolved_path: string | null;
+  source: BrowserExecutableSource;
+  available: boolean;
+}
+
+export interface DesktopScreenshotResponse {
+  ok: boolean;
+  image_base64?: string;
+  width?: number;
+  height?: number;
+  error?: string;
+}
+
 /**
  * Output format for a `/record_demo` clip. `x` produces the framed,
  * X/Twitter-ready H.264 MP4 (window composited onto a background); `raw`
@@ -158,7 +180,8 @@ export const DEFAULT_DEMO_RECORD_OPTIONS: DemoRecordOptions = {
 /** Machine-readable reason a demo-recording preflight failed, mirroring the
  * backend `PreflightKind`. Drives which remediation flow the setup modal
  * shows. */
-export type DemoPreflightKind = "ffmpeg_missing" | "screen_recording_permission";
+export type DemoPreflightKind =
+  "ffmpeg_missing" | "screen_recording_permission";
 
 export interface StartDemoRecordingResponse {
   ok: boolean;
@@ -169,18 +192,33 @@ export interface StartDemoRecordingResponse {
 
 export const desktopApi = {
   getLogEntries: (limit = 1000) =>
-    apiFetch<{ timestamp_ms: number; event: import("../types/aura-events").AuraEvent }[]>(
-      `/api/log-entries?limit=${limit}`,
-    ),
+    apiFetch<
+      {
+        timestamp_ms: number;
+        event: import("../types/aura-events").AuraEvent;
+      }[]
+    >(`/api/log-entries?limit=${limit}`),
   listDirectory: (path: string) =>
-    apiFetch<{ ok: boolean; entries?: DirEntry[]; error?: string }>("/api/list-directory", {
-      method: "POST",
-      body: JSON.stringify({ path }),
-    }),
+    apiFetch<{ ok: boolean; entries?: DirEntry[]; error?: string }>(
+      "/api/list-directory",
+      {
+        method: "POST",
+        body: JSON.stringify({ path }),
+      },
+    ),
   pickFolder: () =>
     apiFetch<string | null>("/api/pick-folder", { method: "POST" }),
-  pickFile: () =>
-    apiFetch<string | null>("/api/pick-file", { method: "POST" }),
+  pickFile: () => apiFetch<string | null>("/api/pick-file", { method: "POST" }),
+  getBrowserExecutable: () =>
+    apiFetch<BrowserExecutableStatus>("/api/browser-executable", {
+      sameOrigin: true,
+    }),
+  setBrowserExecutable: (executablePath: string | null) =>
+    apiFetch<BrowserExecutableStatus>("/api/browser-executable", {
+      method: "PUT",
+      body: JSON.stringify({ executable_path: executablePath }),
+      sameOrigin: true,
+    }),
   persistLastRoute: (route: string) =>
     apiFetch<PersistDesktopRouteResponse>("/api/last-route", {
       method: "POST",
@@ -191,25 +229,33 @@ export const desktopApi = {
       method: "POST",
       body: JSON.stringify({ path }),
     }),
+  captureScreenshot: () =>
+    apiFetch<DesktopScreenshotResponse>("/api/computer/screenshot", {
+      method: "POST",
+    }),
   openIde: (path: string, root?: string) =>
     apiFetch<{ ok: boolean }>("/api/open-ide", {
       method: "POST",
       body: JSON.stringify({ path, root }),
     }),
   readFile: (path: string) =>
-    apiFetch<{ ok: boolean; content?: string; path?: string; error?: string }>("/api/read-file", {
-      method: "POST",
-      body: JSON.stringify({ path }),
-    }),
-  writeFile: (path: string, content: string) =>
-    apiFetch<{ ok: boolean; path?: string; error?: string }>("/api/write-file", {
-      method: "POST",
-      body: JSON.stringify({ path, content }),
-    }),
-  getUpdateStatus: () =>
-    apiFetch<DesktopUpdateStatusResponse>(
-      "/api/update-status",
+    apiFetch<{ ok: boolean; content?: string; path?: string; error?: string }>(
+      "/api/read-file",
+      {
+        method: "POST",
+        body: JSON.stringify({ path }),
+      },
     ),
+  writeFile: (path: string, content: string) =>
+    apiFetch<{ ok: boolean; path?: string; error?: string }>(
+      "/api/write-file",
+      {
+        method: "POST",
+        body: JSON.stringify({ path, content }),
+      },
+    ),
+  getUpdateStatus: () =>
+    apiFetch<DesktopUpdateStatusResponse>("/api/update-status"),
   installUpdate: () =>
     apiFetch<{ ok: boolean; error?: string }>("/api/update-install", {
       method: "POST",
@@ -219,15 +265,20 @@ export const desktopApi = {
       method: "POST",
     }),
   setUpdateChannel: (channel: DesktopUpdateChannel) =>
-    apiFetch<{ ok: boolean; channel: DesktopUpdateChannel; error?: string }>("/api/update-channel", {
-      method: "POST",
-      body: JSON.stringify({ channel }),
-    }),
-  revealUpdateLogs: () =>
-    apiFetch<{ ok: boolean; path?: string; updater_log?: string; error?: string }>(
-      "/api/update-reveal-logs",
-      { method: "POST" },
+    apiFetch<{ ok: boolean; channel: DesktopUpdateChannel; error?: string }>(
+      "/api/update-channel",
+      {
+        method: "POST",
+        body: JSON.stringify({ channel }),
+      },
     ),
+  revealUpdateLogs: () =>
+    apiFetch<{
+      ok: boolean;
+      path?: string;
+      updater_log?: string;
+      error?: string;
+    }>("/api/update-reveal-logs", { method: "POST" }),
   stageUpdateOnly: () =>
     apiFetch<{ ok: boolean; staged_path?: string; error?: string }>(
       "/api/update-stage-only",
@@ -254,10 +305,13 @@ export const desktopApi = {
     });
   },
   setDemoFfmpegPath: (path: string) =>
-    apiFetch<{ ok: boolean; error?: string }>("/api/demo-recordings/ffmpeg-path", {
-      method: "POST",
-      body: JSON.stringify({ path }),
-    }),
+    apiFetch<{ ok: boolean; error?: string }>(
+      "/api/demo-recordings/ffmpeg-path",
+      {
+        method: "POST",
+        body: JSON.stringify({ path }),
+      },
+    ),
   openScreenRecordingSettings: () =>
     apiFetch<{ ok: boolean; error?: string }>(
       "/api/demo-recordings/open-screen-recording-settings",

@@ -1,15 +1,19 @@
-import { render } from "@testing-library/react";
+import { act, render, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AgentChatPanel } from "./AgentChatPanel";
+import { useChatUIStore } from "../../../../stores/chat-ui-store";
+import { DESIGN_PROMPT_EVENT } from "../../../../shared/lib/design-context";
 
 const mockUseAuraCapabilities = vi.fn();
 const mockUseTerminalTarget = vi.fn();
 const mockUseChatStream = vi.fn();
 const mockChatPanelProps = vi.fn();
 const mockRegisterRemoteAgents = vi.fn();
+const mockGetSafeWorkspaceEligibility = vi.fn();
 let mockRemoteStatus: string | undefined = "running";
+let mockMachineType: "local" | "remote" = "remote";
 
 vi.mock("../../../../api/client", () => ({
   api: {
@@ -17,6 +21,8 @@ vi.mock("../../../../api/client", () => ({
     listSessionEventsPaginated: vi.fn(),
     getContextUsage: vi.fn(),
     getContextContents: vi.fn(),
+    getSafeWorkspaceEligibility: (...args: unknown[]) =>
+      mockGetSafeWorkspaceEligibility(...args),
     stopLoop: vi.fn(),
   },
 }));
@@ -46,7 +52,7 @@ vi.mock("../../../../hooks/use-chat-history-sync", () => ({
 vi.mock("../../../../hooks/use-agent-chat-meta", () => ({
   useAgentChatMeta: () => ({
     agentName: "Remote Agent",
-    machineType: "remote",
+    machineType: mockMachineType,
     templateAgentId: "template-agent-1",
     adapterType: "aura",
     defaultModel: "aura-gpt-5-4",
@@ -183,8 +189,12 @@ describe("AgentChatPanel workspace automation target", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockRemoteStatus = "running";
+    mockMachineType = "remote";
+    mockGetSafeWorkspaceEligibility.mockResolvedValue({ available: true });
     mockUseAuraCapabilities.mockReturnValue({
       features: { linkedWorkspace: false },
+      hasDesktopBridge: false,
+      hostedSafeWorkspace: false,
       isMobileLayout: false,
       remoteOnly: false,
     });
@@ -202,6 +212,7 @@ describe("AgentChatPanel workspace automation target", () => {
       resetEvents: vi.fn(),
       markNextSendAsNewSession: vi.fn(),
     });
+    useChatUIStore.setState({ drafts: {} });
   });
 
   it("does not enable dev-loop chat bridging for browse-only remote workspaces", () => {
@@ -235,8 +246,11 @@ describe("AgentChatPanel workspace automation target", () => {
   });
 
   it("keeps local desktop dev-loop chat bridging enabled without a remote instance id", () => {
+    mockMachineType = "local";
     mockUseAuraCapabilities.mockReturnValue({
       features: { linkedWorkspace: true },
+      hasDesktopBridge: true,
+      hostedSafeWorkspace: false,
       isMobileLayout: false,
       remoteOnly: false,
     });
@@ -255,6 +269,105 @@ describe("AgentChatPanel workspace automation target", () => {
         workspaceToolsEnabled: true,
         workspaceStartAgentInstanceId: undefined,
       }),
+    );
+  });
+
+  it("shows Safe Workspace only for an eligible desktop-owned local workspace", async () => {
+    mockMachineType = "local";
+    mockUseAuraCapabilities.mockReturnValue({
+      features: { linkedWorkspace: true },
+      hasDesktopBridge: true,
+      hostedSafeWorkspace: false,
+      isMobileLayout: false,
+      remoteOnly: false,
+    });
+
+    renderPanel();
+
+    await waitFor(() => {
+      expect(mockChatPanelProps).toHaveBeenLastCalledWith(
+        expect.objectContaining({ header: expect.anything() }),
+      );
+    });
+  });
+
+  it("hides Safe Workspace when the linked desktop folder is not Git-backed", async () => {
+    mockMachineType = "local";
+    mockUseAuraCapabilities.mockReturnValue({
+      features: { linkedWorkspace: true },
+      hasDesktopBridge: true,
+      hostedSafeWorkspace: false,
+      isMobileLayout: false,
+      remoteOnly: false,
+    });
+    mockGetSafeWorkspaceEligibility.mockResolvedValue({ available: false });
+
+    renderPanel();
+
+    await waitFor(() => {
+      expect(mockGetSafeWorkspaceEligibility).toHaveBeenCalledWith(
+        "project-1",
+        "agent-inst-1",
+      );
+    });
+    expect(mockChatPanelProps).toHaveBeenLastCalledWith(
+      expect.objectContaining({ header: undefined }),
+    );
+  });
+
+  it("hides Safe Workspace for a web local agent backed by the hosted harness", () => {
+    mockMachineType = "local";
+    mockUseAuraCapabilities.mockReturnValue({
+      features: { linkedWorkspace: false },
+      hasDesktopBridge: false,
+      hostedLocalHarness: true,
+      hostedSafeWorkspace: false,
+      isMobileLayout: false,
+      remoteOnly: false,
+    });
+
+    renderPanel();
+
+    expect(mockChatPanelProps).toHaveBeenLastCalledWith(
+      expect.objectContaining({ header: undefined }),
+    );
+  });
+
+  it("shows Safe Workspace after the hosted harness advertises support", async () => {
+    mockMachineType = "local";
+    mockUseAuraCapabilities.mockReturnValue({
+      features: { linkedWorkspace: false },
+      hasDesktopBridge: false,
+      hostedLocalHarness: true,
+      hostedSafeWorkspace: true,
+      isMobileLayout: false,
+      remoteOnly: false,
+    });
+
+    renderPanel();
+
+    await waitFor(() => {
+      expect(mockChatPanelProps).toHaveBeenLastCalledWith(
+        expect.objectContaining({ header: expect.anything() }),
+      );
+    });
+  });
+
+  it("keeps Safe Workspace hidden for remote agents even when hosted support is available", () => {
+    mockMachineType = "remote";
+    mockUseAuraCapabilities.mockReturnValue({
+      features: { linkedWorkspace: false },
+      hasDesktopBridge: false,
+      hostedLocalHarness: true,
+      hostedSafeWorkspace: true,
+      isMobileLayout: false,
+      remoteOnly: false,
+    });
+
+    renderPanel();
+
+    expect(mockChatPanelProps).toHaveBeenLastCalledWith(
+      expect.objectContaining({ header: undefined }),
     );
   });
 
@@ -278,5 +391,26 @@ describe("AgentChatPanel workspace automation target", () => {
     expect(mockRegisterRemoteAgents).toHaveBeenCalledWith([
       { agent_id: "template-agent-1" },
     ]);
+  });
+
+  it("appends Preview design context to the active chat draft", () => {
+    renderPanel();
+
+    act(() => {
+      const handled = window.dispatchEvent(
+        new CustomEvent(DESIGN_PROMPT_EVENT, {
+          detail: {
+            projectId: "project-1",
+            prompt: "Update #hero\n<context />",
+          },
+          cancelable: true,
+        }),
+      );
+      expect(handled).toBe(false);
+    });
+
+    expect(useChatUIStore.getState().getDraft("stream-key")).toBe(
+      "Update #hero\n<context />",
+    );
   });
 });

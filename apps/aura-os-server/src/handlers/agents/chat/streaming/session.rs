@@ -65,10 +65,6 @@ pub(super) struct SessionForTurn {
     /// here; the orchestrator resubscribes to feed the persist task
     /// and the turn-slot release sentinel.
     pub(super) rx: broadcast::Receiver<HarnessOutbound>,
-    /// Sender paired with `rx`, used to broadcast synthetic terminal
-    /// errors when the remote runtime goes silent while SSE keep-alives
-    /// keep the HTTP connection open.
-    pub(super) events_tx: broadcast::Sender<HarnessOutbound>,
     /// Held for the entire lifetime of this user turn; handed to a
     /// sentinel task that watches the broadcast for the terminal
     /// event and drops the guard there.
@@ -80,12 +76,11 @@ pub(super) struct SessionForTurn {
     /// `spawn_turn_slot_release`; explicit Stop cancels via
     /// `setup/cancel.rs`.)
     pub(super) commands_tx: HarnessCommandSender,
-    /// Subagent frames (`SubagentSpawned` / `SubagentStatus`) the harness
-    /// emitted before `session_ready`, captured at cold-open because no
-    /// consumer was subscribed yet. The orchestrator replays them onto
-    /// `events_tx` after every consumer subscribes so AURA Council member
-    /// columns render live and persist. Empty for warm reuse and for runs
-    /// that emit no subagent frames during init.
+    /// Harness initialization frames consumed at cold-open because no
+    /// downstream consumer was subscribed yet. Starts with `SessionReady`
+    /// for a fresh chat, followed by any earlier council lifecycle frames.
+    /// The orchestrator replays them onto `events_tx` after every consumer
+    /// subscribes. Empty only for warm reuse and non-chat runs.
     pub(super) pending_events: Vec<HarnessOutbound>,
     /// Optional presentation override for this turn's council-style
     /// subagent events. Second Opinion uses the council runtime but
@@ -246,7 +241,6 @@ async fn reuse_with_turn_slot(
         is_new: false,
         was_queued: acquired.queued,
         rx: reused.rx,
-        events_tx: reused.events_tx,
         slot_guard: acquired.guard,
         commands_tx: reused.commands_tx,
         // Warm reuse never cold-opens, so there are no pre-`session_ready`
@@ -262,7 +256,6 @@ async fn reuse_with_turn_slot(
 /// `await` does not block other partitions.
 struct ReusedSessionHandles {
     rx: broadcast::Receiver<HarnessOutbound>,
-    events_tx: broadcast::Sender<HarnessOutbound>,
     commands_tx: HarnessCommandSender,
     turn_slot: Arc<Mutex<()>>,
     turn_pending_count: Arc<AtomicUsize>,
@@ -297,7 +290,6 @@ async fn try_reuse_session(
     }
     let handles = ReusedSessionHandles {
         rx: entry.events_tx.subscribe(),
-        events_tx: entry.events_tx.clone(),
         commands_tx: entry.commands_tx.clone(),
         turn_slot: Arc::clone(&entry.turn_slot),
         turn_pending_count: Arc::clone(&entry.turn_pending_count),
@@ -336,11 +328,10 @@ async fn insert_delegated_chat_session(
         })?;
 
     let rx = started.events_rx;
-    let events_tx = started.session.events_tx.clone();
     let commands_tx = started.session.commands_tx.clone();
-    // Move the captured pre-`session_ready` subagent frames out of the
-    // session before its remaining fields are consumed into the registry
-    // entry below; the orchestrator replays these onto `events_tx`.
+    // Move the captured harness initialization frames out of the session
+    // before its remaining fields are consumed into the registry entry
+    // below; the orchestrator replays these onto `events_tx`.
     let pending_events =
         apply_council_presentation(started.session.pending_events, council_presentation);
     maybe_register_warm_chat_session(
@@ -364,7 +355,6 @@ async fn insert_delegated_chat_session(
         is_new: true,
         was_queued: false,
         rx,
-        events_tx,
         slot_guard: acquired.guard,
         commands_tx,
         pending_events,

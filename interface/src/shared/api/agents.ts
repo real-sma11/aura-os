@@ -22,6 +22,9 @@ type ApiRequestOptions = {
 };
 
 export const STANDALONE_AGENT_HISTORY_LIMIT = 80;
+// Starts before `fetch`, so it also bounds WebKit connection-pool queueing.
+// Keep slightly above the server's 12-second Recall wall-clock budget.
+const RECALL_SEARCH_TIMEOUT_MS = 15_000;
 
 interface AgentEventsRequestOptions extends ApiRequestOptions {
   limit?: number;
@@ -40,11 +43,85 @@ export interface PaginatedEventsResponse {
   next_cursor: string | null;
 }
 
+export interface SessionAsideResponse {
+  answer: string;
+}
+
 export interface PaginatedSessionEventsRequestOptions extends ApiRequestOptions {
   /** Page size (server default 100, max 400). */
   limit?: number;
   /** `event_id` cursor: return the page of messages immediately before it. */
   before?: string;
+}
+
+/** A short, source-linked excerpt from the current user's completed chats. */
+export interface RecallSearchResult {
+  eventId: string;
+  sessionId: string;
+  projectId: ProjectId;
+  agentInstanceId: AgentInstanceId;
+  agentId: AgentId;
+  occurredAt: string;
+  role: "user" | "assistant";
+  snippet: string;
+}
+
+export interface RecallSearchResponse {
+  results: RecallSearchResult[];
+  scannedSessions: number;
+  skippedSessions: number;
+}
+
+export interface SafeWorkspaceCheckpoint {
+  id: string;
+  shortId: string;
+  createdAt: string;
+  reason: string;
+}
+
+export interface SafeWorkspaceStatus {
+  enabled: boolean;
+  workspacePath: string | null;
+  sourcePath: string | null;
+  baseCommit: string | null;
+  createdAt: string | null;
+  checkpoints: SafeWorkspaceCheckpoint[];
+}
+
+export interface SafeWorkspaceEligibility {
+  available: boolean;
+}
+
+export interface SafeWorkspaceDiff {
+  checkpointId: string;
+  stat: string;
+  diff: string;
+  truncated: boolean;
+}
+
+export interface SafeWorkspaceRestoreResult {
+  restoredTo: string;
+  undoCheckpointId: string;
+  workspacePath: string;
+}
+
+export interface SafeWorkspaceApplyResult {
+  applied: boolean;
+  checkpointId: string;
+  stat: string;
+  sourcePath: string;
+}
+
+export interface BranchSessionResult {
+  sessionId: string;
+  copiedEvents: number;
+}
+
+/** A project-scoped instance of one reusable agent identity. */
+export interface AgentProjectBinding {
+  project_agent_id: AgentInstanceId;
+  project_id: ProjectId;
+  project_name: string;
 }
 
 function paginatedEventsQuery(options?: PaginatedSessionEventsRequestOptions): string {
@@ -101,6 +178,18 @@ export interface ContextUsageResponse {
  */
 export interface ContextContentsResponse {
   context_contents?: WireContextContents;
+}
+
+export interface AgentCloneCopyReport {
+  copied: string[];
+  not_copied: string[];
+}
+
+export type CloneAgentMachineType = "local" | "remote";
+
+export interface CloneAgentResponse {
+  agent: Agent;
+  copy_report: AgentCloneCopyReport;
 }
 
 export const agentTemplatesApi = {
@@ -173,8 +262,17 @@ export const agentTemplatesApi = {
   }) =>
     apiFetch<Agent>(`/api/agents/${agentId}`, { method: "PUT", body: JSON.stringify(data) }),
   delete: (agentId: AgentId) => apiFetch<void>(`/api/agents/${agentId}`, { method: "DELETE" }),
+  /** Create a new identity from an agent's portable configuration. */
+  clone: (agentId: AgentId, data: {
+    name?: string;
+    machine_type: CloneAgentMachineType;
+  }) =>
+    apiFetch<CloneAgentResponse>(`/api/agents/${agentId}/clone`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
   listProjectBindings: (agentId: AgentId) =>
-    apiFetch<{ project_agent_id: string; project_id: string; project_name: string }[]>(`/api/agents/${agentId}/projects`),
+    apiFetch<AgentProjectBinding[]>(`/api/agents/${agentId}/projects`),
   removeProjectBinding: (agentId: AgentId, projectAgentId: string) =>
     apiFetch<void>(`/api/agents/${agentId}/projects/${projectAgentId}`, { method: "DELETE" }),
   listEvents: (agentId: AgentId, options?: AgentEventsRequestOptions) => {
@@ -217,6 +315,11 @@ export const agentTemplatesApi = {
       { signal: options?.signal },
     );
   },
+  askSessionAside: (agentId: AgentId, sessionId: string, question: string) =>
+    apiFetch<SessionAsideResponse>(
+      `/api/agents/${agentId}/sessions/${sessionId}/aside`,
+      { method: "POST", body: JSON.stringify({ question }) },
+    ),
   /**
    * Cursor-paginated single-session history for a standalone agent.
    * Without `before`, returns the trailing `limit` messages plus
@@ -522,6 +625,20 @@ export const sessionsApi = {
    * `idx_sessions_user_recent` partial index).
    */
   listMySessions: () => apiFetch<EnrichedSession[]>(`/api/me/sessions`),
+  /**
+   * Read-only lexical recall over the caller's completed chats. Results are
+   * source-linked excerpts, not active-chat context; callers must require an
+   * explicit user action before opening a source or adding an excerpt to a
+   * draft.
+   */
+  searchMySessionHistory: (query: string, limit?: number) => {
+    const params = new URLSearchParams({ q: query });
+    if (limit != null) params.set("limit", String(limit));
+    return apiFetch<RecallSearchResponse>(
+      `/api/me/sessions/search?${params.toString()}`,
+      { timeoutMs: RECALL_SEARCH_TIMEOUT_MS },
+    );
+  },
   listSessions: (projectId: ProjectId, agentInstanceId: AgentInstanceId) =>
     apiFetch<Session[]>(
       `/api/projects/${projectId}/agents/${agentInstanceId}/sessions`,
@@ -530,6 +647,62 @@ export const sessionsApi = {
     apiFetch<Session>(
       `/api/projects/${projectId}/agents/${agentInstanceId}/sessions/${sessionId}`,
     ),
+  branchSession: (
+    projectId: ProjectId,
+    agentInstanceId: AgentInstanceId,
+    sessionId: string,
+    throughEventId: string,
+  ) =>
+    apiFetch<BranchSessionResult>(
+      `/api/projects/${projectId}/agents/${agentInstanceId}/sessions/${sessionId}/branch`,
+      {
+        method: "POST",
+        body: JSON.stringify({ throughEventId }),
+      },
+    ),
+  getSafeWorkspaceStatus: (
+    projectId: ProjectId,
+    agentInstanceId: AgentInstanceId,
+    sessionId: string,
+  ) =>
+    apiFetch<SafeWorkspaceStatus>(
+      `/api/projects/${projectId}/agents/${agentInstanceId}/sessions/${sessionId}/safe-workspace`,
+    ),
+  getSafeWorkspaceEligibility: (
+    projectId: ProjectId,
+    agentInstanceId: AgentInstanceId,
+  ) =>
+    apiFetch<SafeWorkspaceEligibility>(
+      `/api/projects/${projectId}/agents/${agentInstanceId}/safe-workspace-eligibility`,
+    ),
+  getSafeWorkspaceDiff: (
+    projectId: ProjectId,
+    agentInstanceId: AgentInstanceId,
+    sessionId: string,
+    checkpointId: string,
+  ) =>
+    apiFetch<SafeWorkspaceDiff>(
+      `/api/projects/${projectId}/agents/${agentInstanceId}/sessions/${sessionId}/safe-workspace/checkpoints/${checkpointId}/diff`,
+    ),
+  restoreSafeWorkspaceCheckpoint: (
+    projectId: ProjectId,
+    agentInstanceId: AgentInstanceId,
+    sessionId: string,
+    checkpointId: string,
+  ) =>
+    apiFetch<SafeWorkspaceRestoreResult>(
+      `/api/projects/${projectId}/agents/${agentInstanceId}/sessions/${sessionId}/safe-workspace/checkpoints/${checkpointId}/restore`,
+      { method: "POST" },
+    ),
+  applySafeWorkspaceToProject: (
+    projectId: ProjectId,
+    agentInstanceId: AgentInstanceId,
+    sessionId: string,
+  ) =>
+    apiFetch<SafeWorkspaceApplyResult>(
+      `/api/projects/${projectId}/agents/${agentInstanceId}/sessions/${sessionId}/safe-workspace/apply`,
+      { method: "POST" },
+    ),
   listSessionTasks: (projectId: ProjectId, agentInstanceId: AgentInstanceId, sessionId: string) =>
     apiFetch<Task[]>(
       `/api/projects/${projectId}/agents/${agentInstanceId}/sessions/${sessionId}/tasks`,
@@ -537,6 +710,16 @@ export const sessionsApi = {
   listSessionEvents: (projectId: ProjectId, agentInstanceId: AgentInstanceId, sessionId: string) =>
     apiFetch<SessionEvent[]>(
       `/api/projects/${projectId}/agents/${agentInstanceId}/sessions/${sessionId}/events`,
+    ),
+  askSessionAside: (
+    projectId: ProjectId,
+    agentInstanceId: AgentInstanceId,
+    sessionId: string,
+    question: string,
+  ) =>
+    apiFetch<SessionAsideResponse>(
+      `/api/projects/${projectId}/agents/${agentInstanceId}/sessions/${sessionId}/aside`,
+      { method: "POST", body: JSON.stringify({ question }) },
     ),
   /**
    * Cursor-paginated session history. Without `before`, returns the

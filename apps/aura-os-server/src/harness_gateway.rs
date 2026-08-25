@@ -8,6 +8,7 @@ use aura_os_harness::{
 };
 use axum::http::{header, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
+use std::time::Duration;
 use url::Url;
 
 /// Gateway for JSON HTTP calls to the harness (`LOCAL_HARNESS_URL`).
@@ -16,6 +17,12 @@ pub struct HarnessHttpGateway {
     base_url: String,
     client: reqwest::Client,
     transport_auth_token: Option<String>,
+}
+
+#[derive(Debug)]
+pub(crate) struct HarnessJsonError {
+    pub(crate) status: StatusCode,
+    pub(crate) message: String,
 }
 
 impl std::fmt::Debug for HarnessHttpGateway {
@@ -71,6 +78,95 @@ impl HarnessHttpGateway {
 
     pub(crate) fn hosted_base_requires_transport_auth(&self) -> bool {
         is_hosted_harness_base_url(&self.base_url) && !self.has_transport_auth()
+    }
+
+    /// Confirm that the configured harness is actually serving requests.
+    /// Configuration alone is not availability: desktop must fail closed
+    /// when its managed sidecar did not start, and hosted deployments must
+    /// also have transport auth before they can advertise local agents.
+    pub(crate) async fn runtime_available(&self) -> bool {
+        if self.hosted_base_requires_transport_auth() {
+            return false;
+        }
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            self.fetch_json(Method::GET, "health"),
+        )
+        .await
+        .ok()
+        .flatten()
+        .is_some()
+    }
+
+    /// Whether the separately deployed local harness owns the Safe Workspace
+    /// lifecycle API. Missing fields and failed probes deliberately mean
+    /// unsupported so mixed-version Render deployments fail closed.
+    pub(crate) async fn hosted_safe_workspace_available(&self) -> bool {
+        if !self.hosted_local_runtime_available() {
+            return false;
+        }
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            self.fetch_json(Method::GET, "health"),
+        )
+        .await
+        .ok()
+        .flatten()
+        .is_some_and(|health| health_advertises_safe_workspace(&health))
+    }
+
+    /// Call a hosted Safe Workspace endpoint and preserve both the upstream
+    /// status and structured error message for Aura OS API handlers.
+    pub(crate) async fn hosted_safe_workspace_json(
+        &self,
+        method: Method,
+        path: &str,
+    ) -> Result<serde_json::Value, HarnessJsonError> {
+        let url = self
+            .harness_url(path, None)
+            .map_err(|status| HarnessJsonError {
+                status,
+                message: "building hosted Safe Workspace URL failed".to_string(),
+            })?;
+        let req = match method {
+            Method::GET => self.client.get(url),
+            Method::POST => self.client.post(url),
+            _ => {
+                return Err(HarnessJsonError {
+                    status: StatusCode::METHOD_NOT_ALLOWED,
+                    message: "unsupported hosted Safe Workspace method".to_string(),
+                })
+            }
+        };
+        let response = self
+            .apply_transport_auth(req)
+            .header("Content-Type", "application/json")
+            .send()
+            .await
+            .map_err(|error| HarnessJsonError {
+                status: StatusCode::BAD_GATEWAY,
+                message: format!("hosted Safe Workspace request failed: {error}"),
+            })?;
+        let status = StatusCode::from_u16(response.status().as_u16())
+            .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+        let body = response.text().await.map_err(|error| HarnessJsonError {
+            status: StatusCode::BAD_GATEWAY,
+            message: format!("reading hosted Safe Workspace response failed: {error}"),
+        })?;
+        let value =
+            serde_json::from_str::<serde_json::Value>(&body).map_err(|error| HarnessJsonError {
+                status: StatusCode::BAD_GATEWAY,
+                message: format!("hosted Safe Workspace returned invalid JSON: {error}"),
+            })?;
+        if !status.is_success() {
+            let message = value
+                .get("error")
+                .and_then(|value| value.as_str())
+                .unwrap_or("hosted Safe Workspace request was rejected")
+                .to_string();
+            return Err(HarnessJsonError { status, message });
+        }
+        Ok(value)
     }
 
     fn apply_transport_auth(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
@@ -253,9 +349,21 @@ fn normalized_base_url(url: &str) -> String {
     url.trim().trim_end_matches('/').to_string()
 }
 
+fn health_advertises_safe_workspace(health: &serde_json::Value) -> bool {
+    health
+        .get("safe_workspace")
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::HarnessHttpGateway;
+    use super::{health_advertises_safe_workspace, HarnessHttpGateway};
+    use axum::{
+        http::StatusCode,
+        routing::{get, post},
+        Json, Router,
+    };
 
     #[test]
     fn harness_url_keeps_base_host_and_encodes_segments() {
@@ -297,5 +405,72 @@ mod tests {
         let loopback_without_auth = HarnessHttpGateway::new("http://127.0.0.1:9999");
         assert!(!loopback_without_auth.hosted_local_runtime_available());
         assert!(!loopback_without_auth.hosted_base_requires_transport_auth());
+    }
+
+    #[test]
+    fn hosted_safe_workspace_capability_fails_closed_for_old_or_malformed_health() {
+        assert!(!health_advertises_safe_workspace(&serde_json::json!({
+            "status": "ok"
+        })));
+        assert!(!health_advertises_safe_workspace(&serde_json::json!({
+            "safe_workspace": "yes"
+        })));
+        assert!(health_advertises_safe_workspace(&serde_json::json!({
+            "safe_workspace": true
+        })));
+    }
+
+    #[tokio::test]
+    async fn runtime_availability_requires_a_live_health_response() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(
+                listener,
+                Router::new().route(
+                    "/health",
+                    get(|| async { Json(serde_json::json!({ "status": "ok" })) }),
+                ),
+            )
+            .await
+            .unwrap();
+        });
+
+        let gateway = HarnessHttpGateway::new(format!("http://{address}"));
+        assert!(gateway.runtime_available().await);
+        server.abort();
+
+        let closed_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let closed_address = closed_listener.local_addr().unwrap();
+        drop(closed_listener);
+        let unavailable = HarnessHttpGateway::new(format!("http://{closed_address}"));
+        assert!(!unavailable.runtime_available().await);
+    }
+
+    #[tokio::test]
+    async fn checked_json_post_reports_rejection_and_transport_failure() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(
+                listener,
+                Router::new()
+                    .route("/accepted", post(|| async { StatusCode::CREATED }))
+                    .route("/rejected", post(|| async { StatusCode::BAD_REQUEST })),
+            )
+            .await
+            .unwrap();
+        });
+
+        let gateway = HarnessHttpGateway::new(format!("http://{address}"));
+        assert!(gateway.post_json_ok("accepted", "{}".into()).await);
+        assert!(!gateway.post_json_ok("rejected", "{}".into()).await);
+        server.abort();
+
+        let closed_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let closed_address = closed_listener.local_addr().unwrap();
+        drop(closed_listener);
+        let unavailable = HarnessHttpGateway::new(format!("http://{closed_address}"));
+        assert!(!unavailable.post_json_ok("accepted", "{}".into()).await);
     }
 }

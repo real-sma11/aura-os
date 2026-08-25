@@ -218,6 +218,50 @@ pub(crate) struct UpdateAgentRequest {
     pub intent_classifier: Option<aura_os_core::IntentClassifierSpec>,
 }
 
+/// Supported destinations for a cloned agent.
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum CloneAgentMachineType {
+    Local,
+    Remote,
+}
+
+impl CloneAgentMachineType {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Local => "local",
+            Self::Remote => "remote",
+        }
+    }
+}
+
+/// The source agent is addressed by the route and is never mutated. The
+/// destination is explicit so cloning has one predictable API for every
+/// supported source/destination combination.
+#[derive(Debug, Deserialize)]
+pub(crate) struct CloneAgentRequest {
+    /// Name for the new agent. When omitted, the server derives a valid
+    /// `<source>-copy` name from the source agent.
+    #[serde(default)]
+    pub name: Option<String>,
+    pub machine_type: CloneAgentMachineType,
+}
+
+/// Explicit copy boundary returned by the clone endpoint. The UI renders this
+/// contract before cloning too, so users never mistake a configuration clone
+/// for a transfer of secrets or mutable runtime state.
+#[derive(Debug, Serialize)]
+pub(crate) struct AgentCloneCopyReport {
+    pub copied: Vec<String>,
+    pub not_copied: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct CloneAgentResponse {
+    pub agent: Agent,
+    pub copy_report: AgentCloneCopyReport,
+}
+
 // -- Marketplace DTOs --
 
 #[derive(Debug, Clone, Serialize)]
@@ -317,6 +361,12 @@ pub(crate) struct SendChatRequest {
     /// wins and a fresh session is created.
     #[serde(default)]
     pub session_id: Option<String>,
+    /// Run this project chat inside a per-storage-session Git worktree and
+    /// capture a filesystem checkpoint before the turn. Opt-in keeps legacy
+    /// clients on the shared project path until the UI explicitly enables the
+    /// safer execution mode.
+    #[serde(default)]
+    pub safe_workspace: Option<bool>,
     /// Set by `send_to_agent` in aura-harness when agent A messages
     /// agent B. Threaded onto [`crate::handlers::agents::chat::ChatPersistCtx`]
     /// and read by `persist_task` to post B's reply back into A's

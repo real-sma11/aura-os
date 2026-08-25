@@ -44,12 +44,14 @@ import { AttachmentPreviews } from "./AttachmentPreviews";
 import { AttachControl } from "./AttachControl";
 import { AgentInfoBar } from "./AgentInfoBar";
 import { ChatModeBar } from "./ChatModeBar";
+import { VoiceDictationControl } from "./VoiceDictationControl";
+import { useVoiceDictation } from "./useVoiceDictation";
 import {
   InputStatusHints,
   type InputStatusAction,
 } from "./InputStatusHints";
 import { ModelControls } from "./ModelControls";
-import { ProjectPicker } from "./ProjectPicker";
+import { ProjectPicker, type ProjectPickerOption } from "./ProjectPicker";
 import { useChatUI } from "../../../stores/chat-ui-store";
 import { useProfileStatusStore } from "../../../stores/profile-status-store";
 import type { SlashCommand } from "../../../constants/commands";
@@ -111,6 +113,8 @@ export interface ChatInputBarProps {
     agentMentions?: AgentMentionTarget[],
   ) => void;
   onStop: () => void;
+  /** Ask a tool-free, ephemeral side question without mutating the main chat. */
+  onAside?: (question: string) => void;
   streamKey: string;
   /**
    * Treat the input as busy even when the chat SSE is idle. Set when
@@ -163,6 +167,8 @@ export interface ChatInputBarProps {
   demoRecordOptions?: DemoRecordOptions;
   onDemoRecordOptionsChange?: (options: DemoRecordOptions) => void;
   projects?: Project[];
+  /** Lightweight switch targets when the active agent is bound to several projects. */
+  projectPickerOptions?: readonly ProjectPickerOption[];
   selectedProjectId?: string;
   onProjectChange?: (projectId: string) => void;
   /**
@@ -251,6 +257,7 @@ export interface ChatInputBarProps {
 const EMPTY_ATTACHMENTS: AttachmentItem[] = [];
 const EMPTY_COMMANDS: SlashCommand[] = [];
 const EMPTY_PROJECTS: Project[] = [];
+const EMPTY_PROJECT_PICKER_OPTIONS: ProjectPickerOption[] = [];
 const EMPTY_AGENT_INSTANCES: AgentInstance[] = [];
 const CHAT_COMPOSER_MODE_LABELS: Partial<Record<AgentMode, string>> = {
   code: "Chat",
@@ -263,6 +270,7 @@ export const DesktopChatInputBar = memo(
       onInputChange,
       onSend,
       onStop,
+      onAside,
       streamKey,
       isExternallyBusy = false,
       externalBusyMessage,
@@ -281,6 +289,7 @@ export const DesktopChatInputBar = memo(
       demoRecordOptions,
       onDemoRecordOptionsChange,
       projects = EMPTY_PROJECTS,
+      projectPickerOptions = EMPTY_PROJECT_PICKER_OPTIONS,
       selectedProjectId,
       onProjectChange,
       workspacePath,
@@ -459,6 +468,13 @@ export const DesktopChatInputBar = memo(
         ? workspacePath
         : null;
     const shellRef = useRef<InputBarShellHandle>(null);
+    const {
+      supported: voiceSupported,
+      listening: voiceListening,
+      error: voiceError,
+      start: startVoiceDictation,
+      stop: stopVoiceDictation,
+    } = useVoiceDictation(onInputChange);
     useImperativeHandle(ref, () => ({
       focus: () => shellRef.current?.focus(),
       isFocused: () => document.activeElement === shellRef.current?.getTextarea(),
@@ -582,6 +598,22 @@ export const DesktopChatInputBar = memo(
       onAgentMentionSelect: recordAgentMention,
     });
 
+    const handleComposerInputChange = useCallback(
+      (nextValue: string) => {
+        // Manual typing owns the draft from this point forward. Stop first so
+        // a late interim recognition result cannot overwrite the edit.
+        if (voiceListening) stopVoiceDictation();
+        handleInputChange(nextValue);
+      },
+      [handleInputChange, stopVoiceDictation, voiceListening],
+    );
+
+    useEffect(() => {
+      if (isStreaming || sendDisabled || inputReadOnly) {
+        stopVoiceDictation();
+      }
+    }, [inputReadOnly, isStreaming, sendDisabled, stopVoiceDictation]);
+
     const projectFiles = useProjectFiles({
       workspacePath: mentionWorkspacePath,
       remoteAgentId,
@@ -680,8 +712,12 @@ export const DesktopChatInputBar = memo(
     // between keystrokes while the menu is open (a fresh Set per render
     // used to defeat it on every character).
     const excludeIds = useMemo(
-      () => new Set(selectedCommands.map((c) => c.id)),
-      [selectedCommands],
+      () => {
+        const ids = new Set(selectedCommands.map((c) => c.id));
+        if (!onAside) ids.add("btw");
+        return ids;
+      },
+      [onAside, selectedCommands],
     );
 
     const handleCommandRemove = useCallback(
@@ -733,7 +769,23 @@ export const DesktopChatInputBar = memo(
     }, [setPinnedSourceImage, streamKey]);
 
     const handleSubmit = useCallback(() => {
+      stopVoiceDictation();
       if (sendDisabled) return;
+      const asideSelected = selectedCommands.some(
+        (command) => command.id === "btw",
+      );
+      if (asideSelected) {
+        const question = input.trim();
+        if (!question || !onAside) return;
+        track("chat_side_question_sent");
+        setAgentMentionState({ streamKey, mentions: [] });
+        onCommandsChange?.(
+          selectedCommands.filter((command) => command.id !== "btw"),
+        );
+        onInputChange("");
+        onAside(question);
+        return;
+      }
       track("chat_message_sent", { model: selectedModel, mode: selectedMode });
       // Mode is read from the store inside `useChatPanelState.handleSend`;
       // we no longer need to thread `generationMode` through here.
@@ -749,7 +801,20 @@ export const DesktopChatInputBar = memo(
       }
       setAgentMentionState({ streamKey, mentions: [] });
       onSend(input, undefined, undefined);
-    }, [input, onSend, selectedAgentMentions, selectedModel, selectedMode, sendDisabled, streamKey]);
+    }, [
+      input,
+      onAside,
+      onCommandsChange,
+      onInputChange,
+      onSend,
+      selectedAgentMentions,
+      selectedCommands,
+      selectedModel,
+      selectedMode,
+      sendDisabled,
+      stopVoiceDictation,
+      streamKey,
+    ]);
 
     const removeAgentMention = useCallback(
       (instanceId: string) => {
@@ -913,6 +978,18 @@ export const DesktopChatInputBar = memo(
     const inputRowEnd = showPickerInline ? (
       <ModelControls placement="inline" {...modelControlsProps} />
     ) : null;
+    const inputRowAction = !isStatic && voiceSupported ? (
+      <VoiceDictationControl
+        supported={voiceSupported}
+        listening={voiceListening}
+        error={voiceError}
+        disabled={isStreaming || sendDisabled || inputReadOnly}
+        onToggle={() => {
+          if (voiceListening) stopVoiceDictation();
+          else startVoiceDictation(input);
+        }}
+      />
+    ) : null;
     // Bottom region stacks the tags row above the model ("LLM") row so a
     // tag like `/Record Demo` sits on its own line with full text, one
     // line below the prompt, and the model picker keeps its own line.
@@ -944,7 +1021,9 @@ export const DesktopChatInputBar = memo(
     const infoBarEnd = (
       <>
         <ProjectPicker
-          projects={projects}
+          projects={
+            projectPickerOptions.length > 0 ? projectPickerOptions : projects
+          }
           selectedProjectId={selectedProjectId}
           onProjectChange={onProjectChange}
         />
@@ -984,13 +1063,18 @@ export const DesktopChatInputBar = memo(
     //    copy, so Send is always enabled (matches today's flow).
     // Other modes keep the historical "text or attachments or chips"
     // rule.
-    const isSendEnabled = isThreeDMode
-      ? has3DSource ||
-        input.trim().length > 0 ||
-        selectedCommands.length > 0
-      : input.trim().length > 0 ||
-        attachments.length > 0 ||
-        selectedCommands.length > 0;
+    const asideSelected = selectedCommands.some(
+      (command) => command.id === "btw",
+    );
+    const isSendEnabled = asideSelected
+      ? onAside != null && input.trim().length > 0
+      : isThreeDMode
+        ? has3DSource ||
+          input.trim().length > 0 ||
+          selectedCommands.length > 0
+        : input.trim().length > 0 ||
+          attachments.length > 0 ||
+          selectedCommands.length > 0;
     const placeholder = isThreeDMode
       ? has3DSource
         ? "Refine your 3D model (optional)"
@@ -1025,7 +1109,7 @@ export const DesktopChatInputBar = memo(
       <InputBarShell
         ref={shellRef}
         value={input}
-        onValueChange={handleInputChange}
+        onValueChange={handleComposerInputChange}
         onSubmit={handleSubmit}
         onStop={onStop}
         isStreaming={isStreaming}
@@ -1059,6 +1143,7 @@ export const DesktopChatInputBar = memo(
         containerBottom={containerBottom}
         inputRowStart={inputRowStart}
         inputRowEnd={inputRowEnd}
+        inputRowAction={inputRowAction}
         reserveInlineEnd={reserveInlineEnd}
         infoBarStart={infoBarStart}
         infoBarEnd={infoBarEnd}

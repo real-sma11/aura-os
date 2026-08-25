@@ -6,10 +6,12 @@
 use std::sync::Arc;
 
 use aura_os_core::HarnessMode;
-use aura_os_harness::{CouncilPresentation, HarnessOutbound, SessionBridgeTurn, SessionConfig};
+use aura_os_harness::{
+    CouncilPresentation, ErrorMsg, HarnessOutbound, SessionBridgeTurn, SessionConfig,
+};
 use axum::response::sse::{KeepAlive, Sse};
 use tokio::sync::broadcast;
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 use crate::dto::ChatAttachmentDto;
 use crate::error::{ApiError, ApiResult};
@@ -214,7 +216,6 @@ pub(in super::super) async fn open_harness_chat_stream(
         is_new,
         was_queued,
         rx,
-        events_tx,
         slot_guard,
         commands_tx,
         pending_events,
@@ -235,8 +236,13 @@ pub(in super::super) async fn open_harness_chat_stream(
     let PresentedTurnStream {
         rx,
         events_tx,
+        relay,
+    } = present_turn_stream(
+        rx,
         pending_events,
-    } = present_turn_stream(rx, events_tx, pending_events, council_presentation);
+        council_presentation,
+        ctx.session_id.to_string(),
+    );
 
     // Register this turn as a reattachable live stream so a
     // reconnecting / reloading UI can rejoin the in-flight delta stream
@@ -271,28 +277,6 @@ pub(in super::super) async fn open_harness_chat_stream(
     let persist_rx = rx.resubscribe();
     let release_rx = rx.resubscribe();
     let watchdog_rx = rx.resubscribe();
-
-    // Replay any subagent frames the harness emitted before
-    // `session_ready` (AURA Council fans its members out at run start, so
-    // their `subagent_spawned` events land before any of the consumers
-    // above could subscribe to `events_tx` and would otherwise be lost).
-    // Now that the SSE bridge (`rx`), the persist task (`persist_rx`), the
-    // watchdog, and the live-stream registry are all subscribed, sending
-    // these onto `events_tx` delivers them to every consumer: the chat UI
-    // renders the council member columns live and `handle_subagent_spawned`
-    // persists them so a reload rebuilds the same `CouncilPanel`. A no-op
-    // for ordinary turns (`pending_events` is empty).
-    if !pending_events.is_empty() {
-        debug!(
-            target: "aura::council",
-            count = pending_events.len(),
-            session_key = %session_key,
-            "replaying pre-session_ready subagent frames onto chat broadcast"
-        );
-        for evt in pending_events {
-            let _ = events_tx.send(evt);
-        }
-    }
 
     // Fan out the now-persisted user turn onto the local WebSocket event
     // bus so the UI can live-refresh the target agent's chat panel when
@@ -334,6 +318,12 @@ pub(in super::super) async fn open_harness_chat_stream(
     // `events_tx`, so it never steals frames from the persist / SSE
     // fan-out. Runs before `ctx` is moved into the persist task.
     maybe_spawn_subagent_capture(state, &ctx, &events_tx, persist_model.clone());
+
+    // Every downstream receiver is attached now. Start the relay only at
+    // this point so initialization frames and any council output emitted
+    // immediately after `SessionReady` cannot outrun SSE, persistence,
+    // watchdog, subagent capture, or the resumable live-stream registry.
+    spawn_turn_stream_relay(relay, events_tx.clone(), session_key.clone());
 
     spawn_chat_persist_task(
         persist_rx,
@@ -434,57 +424,135 @@ fn persist_error_ctx(ctx: &ChatPersistCtx) -> crate::error::ChatPersistErrorCtx 
 struct PresentedTurnStream {
     rx: broadcast::Receiver<HarnessOutbound>,
     events_tx: broadcast::Sender<HarnessOutbound>,
+    relay: TurnStreamRelay,
+}
+
+struct TurnStreamRelay {
+    source_rx: broadcast::Receiver<HarnessOutbound>,
     pending_events: Vec<HarnessOutbound>,
+    presentation: Option<CouncilPresentation>,
+    canonical_session_id: String,
 }
 
 fn present_turn_stream(
-    rx: broadcast::Receiver<HarnessOutbound>,
-    events_tx: broadcast::Sender<HarnessOutbound>,
+    source_rx: broadcast::Receiver<HarnessOutbound>,
     pending_events: Vec<HarnessOutbound>,
     presentation: Option<CouncilPresentation>,
+    canonical_session_id: String,
 ) -> PresentedTurnStream {
-    let Some(presentation) = presentation else {
-        return PresentedTurnStream {
-            rx,
-            events_tx,
-            pending_events,
-        };
-    };
-
     let (presented_tx, presented_rx) =
         broadcast::channel(aura_os_harness::ws_bridge_config::read_broadcast_capacity_from_env());
-    spawn_presentation_relay(rx, presented_tx.clone(), presentation);
 
     PresentedTurnStream {
         rx: presented_rx,
         events_tx: presented_tx,
-        pending_events,
+        relay: TurnStreamRelay {
+            source_rx,
+            pending_events,
+            presentation,
+            canonical_session_id,
+        },
     }
 }
 
-fn spawn_presentation_relay(
-    mut raw_rx: broadcast::Receiver<HarnessOutbound>,
+/// Present the storage session identity on the client-facing chat stream.
+///
+/// The harness `session_ready.session_id` identifies its ephemeral runtime
+/// run. Chat URLs, history, persistence, billing, and stream reattachment are
+/// all keyed by `ChatPersistCtx::session_id` instead. Forwarding the runtime id
+/// makes a fresh web or desktop chat navigate to a session that storage cannot
+/// load, then appear to change ids when the persisted sidebar row arrives.
+/// Keep the harness id internal and normalize the protocol event at the server
+/// boundary shared by SSE and resumable live-stream consumers.
+fn present_chat_event(
+    evt: HarnessOutbound,
+    presentation: Option<CouncilPresentation>,
+    canonical_session_id: &str,
+) -> HarnessOutbound {
+    match apply_council_presentation_to_event(evt, presentation) {
+        HarnessOutbound::SessionReady(mut ready) => {
+            ready.session_id = canonical_session_id.to_string();
+            HarnessOutbound::SessionReady(ready)
+        }
+        other => other,
+    }
+}
+
+fn spawn_turn_stream_relay(
+    relay: TurnStreamRelay,
     presented_tx: broadcast::Sender<HarnessOutbound>,
-    presentation: CouncilPresentation,
+    session_key: String,
 ) {
     tokio::spawn(async move {
+        let TurnStreamRelay {
+            mut source_rx,
+            pending_events,
+            presentation,
+            canonical_session_id,
+        } = relay;
+
+        let had_pending_events = !pending_events.is_empty();
+        if had_pending_events {
+            debug!(
+                target: "aura::council",
+                count = pending_events.len(),
+                %session_key,
+                "replaying captured harness initialization frames onto turn broadcast"
+            );
+        }
+        for evt in pending_events {
+            let evt = present_chat_event(evt, presentation, &canonical_session_id);
+            let terminal = is_terminal_turn_event(&evt);
+            let _ = presented_tx.send(evt);
+            if terminal {
+                return;
+            }
+        }
+        // Let the already-subscribed consumers drain the identity-first
+        // initialization batch before forwarding any replay-on-attach burst
+        // that accumulated immediately after readiness.
+        if had_pending_events {
+            tokio::task::yield_now().await;
+        }
+
         loop {
-            match raw_rx.recv().await {
+            match source_rx.recv().await {
                 Ok(evt) => {
-                    let evt = apply_council_presentation_to_event(evt, Some(presentation));
+                    let evt = present_chat_event(evt, presentation, &canonical_session_id);
+                    let terminal = is_terminal_turn_event(&evt);
                     let _ = presented_tx.send(evt);
+                    if terminal {
+                        break;
+                    }
                 }
                 Err(broadcast::error::RecvError::Lagged(skipped)) => {
-                    debug!(
-                        target: "aura::council",
+                    warn!(
+                        target: "aura::chat",
                         skipped,
-                        "presentation relay lagged while relabeling council events"
+                        %session_key,
+                        "turn stream relay lagged; surfacing terminal integrity error"
                     );
+                    let _ = presented_tx.send(HarnessOutbound::Error(ErrorMsg {
+                        code: "harness_event_stream_lagged".to_string(),
+                        message: format!(
+                            "Harness event stream lost {skipped} event(s) before they could be delivered"
+                        ),
+                        recoverable: true,
+                        support_id: None,
+                    }));
+                    break;
                 }
                 Err(broadcast::error::RecvError::Closed) => break,
             }
         }
     });
+}
+
+fn is_terminal_turn_event(evt: &HarnessOutbound) -> bool {
+    matches!(
+        evt,
+        HarnessOutbound::AssistantMessageEnd(_) | HarnessOutbound::Error(_)
+    )
 }
 
 #[cfg(test)]
@@ -512,16 +580,16 @@ mod tests {
         let (raw_tx, raw_rx) = broadcast::channel(8);
         let PresentedTurnStream {
             mut rx,
-            events_tx: _presented_tx,
-            pending_events,
+            events_tx: presented_tx,
+            relay,
         } = present_turn_stream(
             raw_rx,
-            raw_tx.clone(),
             Vec::new(),
             Some(CouncilPresentation::SecondOpinion),
+            "storage-session".to_string(),
         );
 
-        assert!(pending_events.is_empty());
+        spawn_turn_stream_relay(relay, presented_tx, "test-session".to_string());
         raw_tx
             .send(council_spawn("general_purpose"))
             .expect("send raw spawn");
@@ -537,5 +605,64 @@ mod tests {
             }
             other => panic!("expected subagent spawn, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn turn_stream_replays_identity_before_immediate_post_ready_output() {
+        let (raw_tx, raw_rx) = broadcast::channel(8);
+        raw_tx
+            .send(HarnessOutbound::TextDelta(aura_os_harness::TextDelta {
+                text: "immediate-post-ready".to_string(),
+            }))
+            .expect("prime post-ready output");
+        let ready = HarnessOutbound::SessionReady(aura_os_harness::SessionReady {
+            session_id: "session-early".to_string(),
+            tools: Vec::new(),
+            skills: Vec::new(),
+        });
+        let PresentedTurnStream {
+            mut rx,
+            events_tx,
+            relay,
+        } = present_turn_stream(raw_rx, vec![ready], None, "storage-session".to_string());
+
+        spawn_turn_stream_relay(relay, events_tx, "test-session".to_string());
+
+        assert!(matches!(
+            rx.recv().await.expect("session ready"),
+            HarnessOutbound::SessionReady(ref ready)
+                if ready.session_id == "storage-session"
+        ));
+        assert!(matches!(
+            rx.recv().await.expect("post-ready output"),
+            HarnessOutbound::TextDelta(ref delta) if delta.text == "immediate-post-ready"
+        ));
+    }
+
+    #[tokio::test]
+    async fn turn_stream_surfaces_source_lag_as_terminal_error() {
+        let (raw_tx, raw_rx) = broadcast::channel(1);
+        raw_tx
+            .send(HarnessOutbound::TextDelta(aura_os_harness::TextDelta {
+                text: "overwritten".to_string(),
+            }))
+            .unwrap();
+        raw_tx
+            .send(HarnessOutbound::TextDelta(aura_os_harness::TextDelta {
+                text: "latest".to_string(),
+            }))
+            .unwrap();
+        let PresentedTurnStream {
+            mut rx,
+            events_tx,
+            relay,
+        } = present_turn_stream(raw_rx, Vec::new(), None, "storage-session".to_string());
+
+        spawn_turn_stream_relay(relay, events_tx, "test-session".to_string());
+
+        assert!(matches!(
+            rx.recv().await.expect("integrity error"),
+            HarnessOutbound::Error(ref error) if error.code == "harness_event_stream_lagged"
+        ));
     }
 }

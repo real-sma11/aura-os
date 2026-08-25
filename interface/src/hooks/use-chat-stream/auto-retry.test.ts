@@ -125,6 +125,46 @@ describe("isStreamDroppedError — Phase 2 harness-WS error codes", () => {
     ).toBe(false);
   });
 
+  it("classifies the Aura Router Anthropic transport failure as streamDropped", () => {
+    const error = {
+      code: "llm_error",
+      message:
+        "Anthropic API request failed: error sending request for url (https://aura-router.onrender.com/v1/messages): connection closed before message completed (llm_error)",
+    };
+
+    expect(isStreamDroppedError(error)).toBe(true);
+    expect(normalizeStreamError(error).displayVariant).toBe("streamDropped");
+  });
+
+  it("does not retry non-transport llm errors", () => {
+    expect(
+      isStreamDroppedError({
+        code: "llm_error",
+        message: "Anthropic API request failed: invalid model",
+      }),
+    ).toBe(false);
+  });
+
+  it("does not misclassify a structured agent-directory failure as a dropped LLM stream", () => {
+    const error = {
+      body: { code: "agent_directory_unavailable" },
+      message:
+        "resolving agent: error sending request for url (https://aura-network.onrender.com/api/agents/a1)",
+    };
+
+    expect(isStreamDroppedError(error)).toBe(false);
+    expect(normalizeStreamError(error).displayVariant).toBeUndefined();
+  });
+
+  it("retries the router's structured mid-stream interruption", () => {
+    expect(
+      isStreamDroppedError({
+        code: "llm_error",
+        message: "Provider stream interrupted before completion",
+      }),
+    ).toBe(true);
+  });
+
   it("uses the connection-to-the-agent wording in the streamDropped banner", () => {
     const normalized = normalizeStreamError({
       code: "harness_ws_closed",

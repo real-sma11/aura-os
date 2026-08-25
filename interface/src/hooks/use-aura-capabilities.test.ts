@@ -1,4 +1,4 @@
-import { renderHook, act, waitFor } from "@testing-library/react";
+import { renderHook, waitFor } from "@testing-library/react";
 import {
   useAuraCapabilities,
   AURA_BREAKPOINTS,
@@ -160,6 +160,7 @@ describe("useAuraCapabilities", () => {
               remoteOnly: false,
               localAgentRuntimeAvailable: true,
               hostedLocalHarness: true,
+              hostedSafeWorkspace: true,
             }),
         }),
       ),
@@ -173,6 +174,7 @@ describe("useAuraCapabilities", () => {
       expect(result.current.remoteOnly).toBe(false);
       expect(result.current.localAgentRuntimeAvailable).toBe(true);
       expect(result.current.hostedLocalHarness).toBe(true);
+      expect(result.current.hostedSafeWorkspace).toBe(true);
     });
   });
 
@@ -208,6 +210,36 @@ describe("useAuraCapabilities", () => {
     });
 
     delete (window as Window & { ipc?: { postMessage: () => void } }).ipc;
+  });
+
+  it("hides local agents when the desktop harness health probe fails", async () => {
+    const { matchMedia } = createMockMatchMedia();
+    window.matchMedia = matchMedia as unknown as typeof window.matchMedia;
+    (window as Window & { ipc?: { postMessage: () => void } }).ipc = {
+      postMessage: vi.fn(),
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              remoteOnly: false,
+              localAgentRuntimeAvailable: false,
+              hostedLocalHarness: false,
+            }),
+        }),
+      ),
+    );
+
+    const { result } = renderHook(() => useAuraCapabilities());
+
+    expect(result.current.localAgentRuntimeAvailable).toBe(true);
+    await waitFor(() => {
+      expect(result.current.localAgentRuntimeAvailable).toBe(false);
+      expect(result.current.remoteOnly).toBe(true);
+    });
   });
 
   it("detects phone layout", () => {
