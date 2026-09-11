@@ -103,6 +103,7 @@ mod session_status_serde {
     test_enum_variant!(completed, SessionStatus::Completed, "completed");
     test_enum_variant!(failed, SessionStatus::Failed, "failed");
     test_enum_variant!(rolled_over, SessionStatus::RolledOver, "rolled_over");
+    test_enum_variant!(archived, SessionStatus::Archived, "archived");
     test_enum_variant!(deleted, SessionStatus::Deleted, "deleted");
 }
 
@@ -268,6 +269,8 @@ fn sample_session(project_id: ProjectId, agent_instance_id: AgentInstanceId) -> 
         total_input_tokens: 0,
         total_output_tokens: 0,
         summary_of_previous_context: String::new(),
+        pinned_at: Some(now),
+        snoozed_until: Some(now),
         status: SessionStatus::Active,
         user_id: None,
         model: None,

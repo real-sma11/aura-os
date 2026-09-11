@@ -1,28 +1,51 @@
-import { useCallback } from "react";
-import { useSearchParams } from "react-router-dom";
-import { PageEmptyState, Topbar } from "@cypher-asi/zui";
+import { useCallback, useMemo } from "react";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Button, PageEmptyState, Topbar } from "@cypher-asi/zui";
+import { ArrowLeft, X } from "lucide-react";
 import { FileExplorer } from "../../components/FileExplorer";
 import { Lane } from "../../components/Lane";
 import { WindowControls } from "../../components/WindowControls";
 import { useAuraCapabilities } from "../../hooks/use-aura-capabilities";
 import { windowCommand } from "../../lib/windowCommand";
+import { resolveIdeReturnPath } from "../../shared/lib/ide-navigation";
 import { useIdeViewTabs } from "./useIdeViewTabs";
 import { EditorTabBar } from "./EditorTabBar";
 import { EditorBody } from "./EditorBody";
 import styles from "./IdeView.module.css";
 
 export function IdeView() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const { features } = useAuraCapabilities();
   const [params] = useSearchParams();
   const initialFile = params.get("file") ?? "";
   const rootPath = params.get("root") ?? (initialFile ? initialFile.replace(/[\\/][^\\/]+$/, "") : "");
   const remoteAgentId = params.get("remoteAgentId") ?? undefined;
+  const hostedProjectId = params.get("projectId") ?? undefined;
+  const hostedAgentInstanceId = params.get("agentInstanceId") ?? undefined;
+  const hostedWorkspace = useMemo(
+    () =>
+      hostedProjectId && hostedAgentInstanceId
+        ? { projectId: hostedProjectId, agentInstanceId: hostedAgentInstanceId }
+        : undefined,
+    [hostedAgentInstanceId, hostedProjectId],
+  );
+  const effectiveRootPath = hostedWorkspace ? undefined : rootPath;
 
-  const ide = useIdeViewTabs(initialFile, remoteAgentId);
+  const ide = useIdeViewTabs(initialFile, remoteAgentId, hostedWorkspace);
+  const fallbackReturnPath = hostedProjectId
+    ? `/projects/${encodeURIComponent(hostedProjectId)}/files`
+    : "/projects";
+  const returnPath = resolveIdeReturnPath(location.state, fallbackReturnPath);
+  const showReturnNavigation = Boolean(remoteAgentId || hostedWorkspace);
 
-  const handleFileSelect = useCallback((path: string) => ide.openTab(path), [ide.openTab]);
+  const handleFileSelect = ide.openTab;
+  const handleReturn = useCallback(
+    () => navigate(returnPath, { replace: true }),
+    [navigate, returnPath],
+  );
 
-  if (!features.ideIntegration && !remoteAgentId) {
+  if (!features.ideIntegration && !remoteAgentId && !hostedWorkspace) {
     return <PageEmptyState title="IDE stays on desktop" description="This device does not expose local file editing or IDE workflows." />;
   }
 
@@ -31,15 +54,51 @@ export function IdeView() {
       <Topbar
         className="titlebar-drag"
         onDoubleClick={() => windowCommand("maximize")}
-        icon={<img src="/aura-icon.png" alt="" className="titlebar-icon" />}
+        icon={
+          <div className={styles.titlebarLeading}>
+            {showReturnNavigation && (
+              <Button
+                variant="ghost"
+                size="sm"
+                iconOnly
+                icon={<ArrowLeft size={16} />}
+                aria-label="Back to files"
+                title="Back to files"
+                onClick={handleReturn}
+              />
+            )}
+            <img src="/aura-icon.png" alt="" className="titlebar-icon" />
+          </div>
+        }
         title={<span className="titlebar-center">AURA IDE</span>}
-        actions={<WindowControls />}
+        actions={
+          <div className={styles.titlebarActions}>
+            {showReturnNavigation && (
+              <Button
+                variant="ghost"
+                size="sm"
+                iconOnly
+                icon={<X size={16} />}
+                aria-label="Close editor"
+                title="Close editor"
+                onClick={handleReturn}
+              />
+            )}
+            <WindowControls />
+          </div>
+        }
       />
 
       <div className={styles.body}>
-        {rootPath && (
+        {(effectiveRootPath || hostedWorkspace) && (
           <Lane resizable resizePosition="right" defaultWidth={220} minWidth={120} maxWidth={480} storageKey="ide-sidebar-width" className={styles.sidebar}>
-            <FileExplorer rootPath={rootPath} onFileSelect={handleFileSelect} remoteAgentId={remoteAgentId} />
+            <FileExplorer
+              rootPath={effectiveRootPath}
+              rootLabel={hostedWorkspace ? "Project files" : undefined}
+              onFileSelect={handleFileSelect}
+              remoteAgentId={remoteAgentId}
+              hostedWorkspace={hostedWorkspace}
+            />
           </Lane>
         )}
 

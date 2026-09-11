@@ -363,9 +363,9 @@ export const MessageBubble = memo(function MessageBubble({
             <button
               type="button"
               className={styles.inlineErrorLink}
-              onClick={onRetry}
+              onClick={onRetry} title="Resend the original prompt from the start; this does not resume unfinished work."
             >
-              Retry
+              Restart turn
             </button>
           )}
           {isInsufficientCreditsError && (
@@ -644,6 +644,11 @@ export const MessageBubble = memo(function MessageBubble({
           }`}
         >
           {isUser ? renderUserContent() : renderAssistantContent()}
+        </div>
+      )}
+      {isUser && message.deliveryStatus === "queued" && (
+        <div className={styles.deliveryStatus} role="status">
+          Queued
         </div>
       )}
       {showAssistantCopy && streamKey && (

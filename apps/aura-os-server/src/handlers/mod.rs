@@ -14,6 +14,7 @@ pub(crate) mod files;
 pub(crate) mod follows;
 pub(crate) mod generation;
 pub(crate) mod harness_proxy;
+pub(crate) mod hosted_workspace_files;
 pub(crate) mod leaderboard;
 #[allow(dead_code)]
 pub(crate) mod live_heuristics;
@@ -35,6 +36,7 @@ pub(crate) mod public_models;
 pub(crate) mod remote_files;
 pub(crate) mod remote_terminal;
 pub(crate) mod shares;
+pub(crate) mod source_control;
 pub(crate) mod spec_disk;
 pub(crate) mod specs;
 pub(crate) mod sse;

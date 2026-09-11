@@ -6,6 +6,10 @@ import {
   type AnnotatedSession,
   formatDeleteSessionError,
   SessionsList,
+  useSessionArchiveActions,
+  useSessionRenameAction,
+  useSessionPinAction,
+  useSessionSnoozeAction,
   useSessionNavigate,
 } from "../../components/SessionsList";
 import {
@@ -22,6 +26,7 @@ import { useSessionListData } from "./useSessionListData";
  */
 export function SessionList({ searchQuery }: { searchQuery: string }) {
   const {
+    surfaceKey,
     sessions,
     loading,
     removeSession,
@@ -29,6 +34,11 @@ export function SessionList({ searchQuery }: { searchQuery: string }) {
     deleteError,
     setDeleteError,
   } = useSessionListData();
+  const { archiveSession, restoreArchivedSession } =
+    useSessionArchiveActions(surfaceKey);
+  const renameSession = useSessionRenameAction(surfaceKey);
+  const setSessionPinned = useSessionPinAction(surfaceKey);
+  const setSessionSnoozedUntil = useSessionSnoozeAction(surfaceKey);
   const handleSessionClick = useSessionNavigate({ agentId: null });
   const [searchParams] = useSearchParams();
   const selectedSessionId = searchParams.get("session");
@@ -84,6 +94,11 @@ export function SessionList({ searchQuery }: { searchQuery: string }) {
       onSessionClick={handleSessionClick}
       onSessionHover={handleSessionHover}
       onDeleteSession={handleDelete}
+      onArchiveSession={archiveSession}
+      onRestoreSession={restoreArchivedSession}
+      onRenameSession={renameSession}
+      onSetSessionPinned={setSessionPinned}
+      onSetSessionSnoozedUntil={setSessionSnoozedUntil}
       searchQuery={searchQuery}
       deleteError={deleteError}
       onDismissError={handleDismissError}

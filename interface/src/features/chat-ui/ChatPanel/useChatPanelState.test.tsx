@@ -206,7 +206,7 @@ describe("useChatPanelState", () => {
     expect(mockScrollToBottom).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps queued sends bottom-anchored while a response is already streaming", () => {
+  it("does not re-arm auto-follow when a follow-up queues during the active response", () => {
     mockIsStreaming = true;
     const onSend = vi.fn();
     const { result } = renderHook(() =>
@@ -228,7 +228,7 @@ describe("useChatPanelState", () => {
         commands: undefined,
       }),
     );
-    expect(mockScrollToBottom).toHaveBeenCalledTimes(1);
+    expect(mockScrollToBottom).not.toHaveBeenCalled();
   });
 
   it("blocks direct, queued, and send-now paths when sending is disabled", () => {
@@ -356,6 +356,7 @@ describe("useChatPanelState", () => {
       "image",
       undefined,
       undefined,
+      "q-1",
     );
   });
 
@@ -407,6 +408,7 @@ describe("useChatPanelState", () => {
       undefined,
       undefined,
       mentions,
+      "q-agent",
     );
   });
 
@@ -593,6 +595,7 @@ describe("useChatPanelState", () => {
       undefined,
       undefined,
       undefined,
+      "q-1",
     );
     // Order matters: stop has to land before the dispatch so the
     // upstream latch is cleared before `sendMessage` re-enters.
@@ -632,6 +635,7 @@ describe("useChatPanelState", () => {
       undefined,
       undefined,
       undefined,
+      "q-2",
     );
   });
 
@@ -665,6 +669,7 @@ describe("useChatPanelState", () => {
       undefined,
       undefined,
       undefined,
+      "q-3",
     );
   });
 });

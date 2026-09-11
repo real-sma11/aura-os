@@ -13,6 +13,11 @@ import { CommandChips } from "../../../features/chat-ui/ChatInputBar/CommandChip
 import { ContextUsageIndicator } from "../../../features/chat-ui/ChatInputBar/ContextUsageIndicator";
 import { VoiceDictationControl } from "../../../features/chat-ui/ChatInputBar/VoiceDictationControl";
 import { useVoiceDictation } from "../../../features/chat-ui/ChatInputBar/useVoiceDictation";
+import {
+  PromptStashButton,
+  PromptStashMenu,
+  usePromptStashComposer,
+} from "../../../features/chat-ui/ChatInputBar/PromptStash";
 import { SlashCommandMenu } from "../../../features/chat-ui/ChatInputBar/SlashCommandMenu";
 import { useFileAttachments } from "../../../features/chat-ui/ChatInputBar/useFileAttachments";
 import type {
@@ -48,6 +53,7 @@ import { MAX_AGENT_MENTIONS, type AgentMentionTarget } from "../../../api/stream
 import { isUserFacingAgentInstance } from "../../../components/ProjectList/project-list-shared";
 import { filterRuntimeVisibleAgents } from "../../../shared/lib/agent-runtime-visibility";
 import { useAuraCapabilities } from "../../../hooks/use-aura-capabilities";
+import { promptLengthError } from "../../../features/chat-ui/ChatInputBar/composer-length";
 import styles from "./MobileChatInputBar.module.css";
 
 const CHAT_COMPOSER_MODE_LABELS: Partial<Record<AgentMode, string>> = {
@@ -115,6 +121,7 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
       contextUsage,
       onNewChat,
       sendDisabled = false,
+      sendDisabledReason,
       composerTone = "build",
     },
     ref,
@@ -136,6 +143,7 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
       stop: stopVoiceDictation,
     } = useVoiceDictation(onInputChange);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const sendPointerSubmittedRef = useRef(false);
     const slashStartRef = useRef<number | null>(null);
     const mentionStartRef = useRef<number | null>(null);
     const mentionEndRef = useRef<number | null>(null);
@@ -156,6 +164,21 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
     }>(() => ({ streamKey, mentions: [] }));
     const [isDragOver, setIsDragOver] = useState(false);
     const [isTextInputFocused, setIsTextInputFocused] = useState(false);
+
+    const clearComposerSemanticState = useCallback(() => {
+      setAgentMentionState({ streamKey, mentions: [] });
+    }, [streamKey]);
+    const focusComposer = useCallback(() => textareaRef.current?.focus(), []);
+    const promptStash = usePromptStashComposer({
+      input,
+      onInputChange,
+      attachments,
+      onAttachmentsChange,
+      commands: selectedCommands,
+      onCommandsChange,
+      onClearSemanticState: clearComposerSemanticState,
+      focus: focusComposer,
+    });
 
     useImperativeHandle(ref, () => ({
       focus: () => textareaRef.current?.focus(),
@@ -205,6 +228,8 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
             ? "video"
             : "chat";
     const isLocalAgent = sendDisabled;
+    const lengthValidationMessage = promptLengthError(input);
+    const isPromptTooLong = lengthValidationMessage != null;
     const isThreeDMode = generationMode === "3d";
     const pinnedSourceImage = chatUI.pinnedSourceImage;
     const has3DSource = isThreeDMode && pinnedSourceImage != null;
@@ -223,6 +248,7 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
     const canSend =
       !isLocalAgent &&
       !isStreaming &&
+      !isPromptTooLong &&
       (asideSelected
         ? onAside != null && input.trim().length > 0
         : isThreeDMode
@@ -535,11 +561,43 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
       streamKey,
     ]);
 
+    const handleSendPointerDown = useCallback(
+      (event: React.PointerEvent<HTMLButtonElement>) => {
+        if (!canSend) return;
+        event.preventDefault();
+        sendPointerSubmittedRef.current = true;
+        submitMessage();
+      },
+      [canSend, submitMessage],
+    );
+
+    const handleSendClick = useCallback(
+      (event: React.MouseEvent<HTMLButtonElement>) => {
+        if (sendPointerSubmittedRef.current || event.detail > 0) {
+          sendPointerSubmittedRef.current = false;
+          event.preventDefault();
+          return;
+        }
+        submitMessage();
+      },
+      [submitMessage],
+    );
+
     useEffect(() => {
       if (isStreaming || sendDisabled) stopVoiceDictation();
     }, [isStreaming, sendDisabled, stopVoiceDictation]);
 
     const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        !event.altKey &&
+        event.key.toLowerCase() === "s"
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        promptStash.stashCurrent();
+        return;
+      }
       if ((slashMenuOpen || mentionMenuOpen) && ["ArrowDown", "ArrowUp", "Enter", "Tab", "Escape"].includes(event.key)) {
         return;
       }
@@ -747,6 +805,15 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
+          {promptStash.open ? (
+            <PromptStashMenu
+              entries={promptStash.entries}
+              error={promptStash.error}
+              onRestore={promptStash.restoreEntry}
+              onDelete={promptStash.deleteEntry}
+              onClose={promptStash.close}
+            />
+          ) : null}
           {slashMenuOpen ? (
             <div className={styles.slashMenuWrap}>
               <SlashCommandMenu
@@ -842,6 +909,28 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
             </div>
           ) : null}
           <CommandChips commands={selectedCommands} onRemove={handleCommandRemove} />
+          {isLocalAgent ? (
+            <div
+              className={styles.disabledNotice}
+              role="status"
+              aria-live="polite"
+              data-agent-surface="mobile-chat-input-disabled-hint"
+            >
+              <span className={styles.disabledNoticeTitle}>Remote agent required</span>
+              <span className={styles.disabledNoticeCopy}>
+                {sendDisabledReason ?? "Choose or create a remote agent to chat from mobile."}
+              </span>
+            </div>
+          ) : null}
+          {lengthValidationMessage ? (
+            <div
+              className={styles.lengthValidationHint}
+              role="alert"
+              data-agent-surface="mobile-chat-input-validation-hint"
+            >
+              {lengthValidationMessage}
+            </div>
+          ) : null}
           <div
             className={`${styles.inputRow}${voiceSupported ? ` ${styles.inputRowVoice}` : ""}`}
           >
@@ -900,7 +989,7 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
               disabled={sendDisabled}
               placeholder={
                 isLocalAgent
-                  ? "Remote agent required. Please switch agent"
+                  ? "Remote agent required"
                   : isThreeDMode
                     ? has3DSource
                       ? "Refine your 3D model (optional)"
@@ -911,6 +1000,12 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
               }
               rows={1}
               data-agent-field="chat-input"
+            />
+            <PromptStashButton
+              count={promptStash.entries.length}
+              open={promptStash.open}
+              onClick={promptStash.toggle}
+              className={styles.stashButton}
             />
             <VoiceDictationControl
               supported={voiceSupported}
@@ -937,7 +1032,8 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
               <button
                 type="button"
                 className={styles.sendButton}
-                onClick={submitMessage}
+                onPointerDown={handleSendPointerDown}
+                onClick={handleSendClick}
                 disabled={!canSend}
                 aria-label="Send"
               >
@@ -947,11 +1043,18 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
           </div>
           <div className={styles.metaRow}>
             <span className={styles.environmentWrap}>
-              <AgentEnvironment
-                machineType={machineType}
-                agentId={templateAgentId ?? agentId}
-                workspacePath={workspacePath}
-              />
+              {isLocalAgent ? (
+                <span className={styles.remoteRequiredStatus} aria-label="Remote agent required">
+                  <span className={styles.remoteRequiredDot} aria-hidden="true" />
+                  Remote required
+                </span>
+              ) : (
+                <AgentEnvironment
+                  machineType={machineType}
+                  agentId={templateAgentId ?? agentId}
+                  workspacePath={workspacePath}
+                />
+              )}
             </span>
             <span className={styles.metaSpacer} />
             {contextUsage != null && contextUsage.utilization > 0 ? (

@@ -1,16 +1,21 @@
 import {
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
+  type FormEvent,
   type ReactElement,
   type ReactNode,
 } from "react";
+import { AlarmClock } from "lucide-react";
 import { EmptyState } from "../EmptyState";
 import {
   SidekickList,
+  type SidekickListRow,
   type SidekickListSection,
 } from "../SidekickList";
+import { Pin } from "lucide-react";
 import { isOptimisticSessionId } from "../../stores/sessions-list-store";
 import {
   type AnnotatedSession,
@@ -19,6 +24,11 @@ import {
   type SessionRow,
 } from "./session-row-utils";
 import { useSessionSummaries } from "./use-session-summaries";
+import {
+  formatSessionWakeLabel,
+  isSessionSnoozed,
+  resolveSessionSnoozePresets,
+} from "./session-snooze";
 import { useIsSessionStreaming } from "../../hooks/use-session-streaming";
 import styles from "./SessionsList.module.css";
 
@@ -28,6 +38,14 @@ interface SessionsListProps {
   selectedSessionId: string | null;
   onSessionClick: (session: AnnotatedSession) => void;
   onDeleteSession?: (session: AnnotatedSession) => void;
+  onArchiveSession?: (session: AnnotatedSession) => void;
+  onRestoreSession?: (session: AnnotatedSession) => void;
+  onRenameSession?: (session: AnnotatedSession, title: string) => void;
+  onSetSessionPinned?: (session: AnnotatedSession, pinned: boolean) => void;
+  onSetSessionSnoozedUntil?: (
+    session: AnnotatedSession,
+    snoozedUntil: string | null,
+  ) => void;
   /**
    * Optional hover hook — fired on `onMouseEnter` of each row so the
    * caller can pre-warm the destination chat-history-store entry for
@@ -134,6 +152,11 @@ export function SessionsList({
   selectedSessionId,
   onSessionClick,
   onDeleteSession,
+  onArchiveSession,
+  onRestoreSession,
+  onRenameSession,
+  onSetSessionPinned,
+  onSetSessionSnoozedUntil,
   onSessionHover,
   searchQuery,
   deleteError,
@@ -141,7 +164,10 @@ export function SessionsList({
   renderRowSuffix,
   streamKeyForSession,
 }: SessionsListProps) {
-  const safeSessions = Array.isArray(sessions) ? sessions : [];
+  const safeSessions = useMemo(
+    () => (Array.isArray(sessions) ? sessions : []),
+    [sessions],
+  );
   // Track which rows are currently scrolled into view so the lazy
   // /summarize backfill in `useSessionSummaries` only fires for rows
   // the user can actually see. Without this gate, opening the
@@ -173,6 +199,9 @@ export function SessionsList({
 
   const summaries = useSessionSummaries(safeSessions, visibleSessionIds);
   const lastHoveredSessionIdRef = useRef<string | null>(null);
+  const [renameTarget, setRenameTarget] = useState<AnnotatedSession | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [snoozeClockMs, setSnoozeClockMs] = useState(() => Date.now());
 
   // Live-update of the row label when the backend's on-send title
   // generator (apps/aura-os-server/src/handlers/agents/sessions.rs
@@ -201,7 +230,66 @@ export function SessionsList({
     return out;
   }, [safeSessions, summaries, searchQuery]);
 
-  const buckets = useMemo(() => bucketizeByDate(titledRows), [titledRows]);
+  const lifecycleActiveRows = useMemo(
+    () => titledRows.filter(({ session }) => session.status !== "archived"),
+    [titledRows],
+  );
+  const archivedRows = useMemo(
+    () => titledRows.filter(({ session }) => session.status === "archived"),
+    [titledRows],
+  );
+  const snoozedRows = useMemo(
+    () =>
+      lifecycleActiveRows
+        .filter(({ session }) => isSessionSnoozed(session, snoozeClockMs))
+        .sort(
+          (a, b) =>
+            Date.parse(a.session.snoozed_until ?? "") -
+            Date.parse(b.session.snoozed_until ?? ""),
+        ),
+    [lifecycleActiveRows, snoozeClockMs],
+  );
+  const activeRows = useMemo(
+    () =>
+      lifecycleActiveRows.filter(
+        ({ session }) => !isSessionSnoozed(session, snoozeClockMs),
+      ),
+    [lifecycleActiveRows, snoozeClockMs],
+  );
+  const pinnedRows = useMemo(
+    () =>
+      activeRows
+        .filter(({ session }) => Boolean(session.pinned_at))
+        .sort(
+          (a, b) =>
+            new Date(b.session.pinned_at ?? 0).getTime() -
+            new Date(a.session.pinned_at ?? 0).getTime(),
+        ),
+    [activeRows],
+  );
+  const buckets = useMemo(
+    () => bucketizeByDate(activeRows.filter(({ session }) => !session.pinned_at)),
+    [activeRows],
+  );
+  const nextWakeAtMs = useMemo(() => {
+    let next: number | null = null;
+    for (const { session } of snoozedRows) {
+      const wakeMs = Date.parse(session.snoozed_until ?? "");
+      if (!Number.isFinite(wakeMs) || wakeMs <= snoozeClockMs) continue;
+      next = next == null ? wakeMs : Math.min(next, wakeMs);
+    }
+    return next;
+  }, [snoozeClockMs, snoozedRows]);
+
+  useEffect(() => {
+    if (nextWakeAtMs == null) return;
+    const delay = Math.min(
+      Math.max(nextWakeAtMs - Date.now() + 25, 25),
+      2_147_000_000,
+    );
+    const timer = window.setTimeout(() => setSnoozeClockMs(Date.now()), delay);
+    return () => window.clearTimeout(timer);
+  }, [nextWakeAtMs]);
   // Check if sessions span multiple projects — only show the project
   // prefix when there's more than one to avoid noise in the common case.
   const hasMultipleProjects = useMemo(() => {
@@ -232,21 +320,111 @@ export function SessionsList({
   //      newest.
   const effectiveSelectedSessionId = useMemo(() => {
     if (selectedSessionId) return selectedSessionId;
-    const optimistic = titledRows.find(({ session }) =>
+    const optimistic = activeRows.find(({ session }) =>
       isOptimisticSessionId(session.session_id),
     );
     if (optimistic) return optimistic.session.session_id;
-    return titledRows[0]?.session.session_id ?? null;
-  }, [selectedSessionId, titledRows]);
+    return activeRows[0]?.session.session_id ?? null;
+  }, [selectedSessionId, activeRows]);
 
   const handleMenuAction = useCallback(
     (actionId: string, rowId: string) => {
-      if (actionId !== "delete") return;
       const target = sessionById.get(rowId);
-      if (target) onDeleteSession?.(target);
+      if (!target) return;
+      if (actionId === "rename") {
+        setRenameTarget(target);
+        setRenameValue(
+          deriveSessionLabel(target, summaries[target.session_id]),
+        );
+      }
+      if (actionId === "pin") onSetSessionPinned?.(target, true);
+      if (actionId === "unpin") onSetSessionPinned?.(target, false);
+      if (actionId === "archive") onArchiveSession?.(target);
+      if (actionId === "restore") onRestoreSession?.(target);
+      if (actionId === "delete") {
+        onDeleteSession?.(target);
+        return;
+      }
+      if (actionId === "wake") {
+        onSetSessionSnoozedUntil?.(target, null);
+        return;
+      }
+      if (actionId === "snooze-hour" || actionId === "snooze-tomorrow") {
+        const presetId = actionId === "snooze-hour" ? "hour" : "tomorrow";
+        const preset = resolveSessionSnoozePresets(new Date()).find(
+          (candidate) => candidate.id === presetId,
+        );
+        if (preset) {
+          onSetSessionSnoozedUntil?.(target, preset.snoozedUntil);
+        }
+      }
     },
-    [sessionById, onDeleteSession],
+    [
+      sessionById,
+      summaries,
+      onSetSessionPinned,
+      onSetSessionSnoozedUntil,
+      onArchiveSession,
+      onRestoreSession,
+      onDeleteSession,
+    ],
   );
+
+  const menuActionsForRow = useCallback(
+    (row: SidekickListRow) => {
+      const target = sessionById.get(row.id);
+      if (!target) return [];
+      if (target.status === "archived") {
+        return [
+          ...(onRenameSession ? (["rename"] as const) : []),
+          ...(onRestoreSession ? (["restore"] as const) : []),
+          ...(onDeleteSession ? (["delete"] as const) : []),
+        ];
+      }
+      const snoozed = isSessionSnoozed(target, snoozeClockMs);
+      return [
+        ...(onRenameSession ? (["rename"] as const) : []),
+        ...(onSetSessionPinned && !isOptimisticSessionId(target.session_id)
+          ? ([target.pinned_at ? "unpin" : "pin"] as const)
+          : []),
+        ...(onSetSessionSnoozedUntil &&
+        !isOptimisticSessionId(target.session_id)
+          ? snoozed
+            ? (["wake"] as const)
+            : (["snooze-hour", "snooze-tomorrow"] as const)
+          : []),
+        ...(onArchiveSession ? (["archive"] as const) : []),
+        ...(onDeleteSession ? (["delete"] as const) : []),
+      ];
+    },
+    [
+      sessionById,
+      snoozeClockMs,
+      onRenameSession,
+      onSetSessionPinned,
+      onSetSessionSnoozedUntil,
+      onArchiveSession,
+      onRestoreSession,
+      onDeleteSession,
+    ],
+  );
+
+  const submitRename = useCallback(
+    (event: FormEvent) => {
+      event.preventDefault();
+      const title = renameValue.trim();
+      if (!renameTarget || !title) return;
+      onRenameSession?.(renameTarget, title);
+      setRenameTarget(null);
+      setRenameValue("");
+    },
+    [onRenameSession, renameTarget, renameValue],
+  );
+
+  const cancelRename = useCallback(() => {
+    setRenameTarget(null);
+    setRenameValue("");
+  }, []);
 
   const handleRowMouseEnter = useCallback(
     (session: AnnotatedSession) => {
@@ -258,44 +436,101 @@ export function SessionsList({
     [onSessionHover],
   );
 
-  const sections = useMemo<SidekickListSection[]>(
-    () =>
-      buckets.map((bucket) => ({
-        id: bucket.label,
-        label: bucket.label,
-        rows: bucket.rows.map(({ session, label }: SessionRow) => {
-          const customSuffix = renderRowSuffix?.(session) ?? null;
-          const defaultSuffix =
-            hasMultipleProjects && session._projectName ? (
-              <span className={styles.sessionProject}>{session._projectName}</span>
-            ) : null;
-          const suffix = customSuffix !== null ? customSuffix : defaultSuffix;
-          return {
-            id: session.session_id,
-            label,
-            leadingIndicator: (
-              <SessionStreamingDot
-                session={session}
-                streamKeyForSession={streamKeyForSession}
-              />
-            ),
-            suffix,
-            onSelect: () => onSessionClick(session),
-            onMouseEnter: () => handleRowMouseEnter(session),
-            onFocus: () => handleRowMouseEnter(session),
-            onVisibilityChange: (visible: boolean) =>
-              handleVisibilityChange(session.session_id, visible),
-          };
-        }),
-      })),
+  const toSidekickRow = useCallback(
+    ({ session, label }: SessionRow): SidekickListRow => {
+      const customSuffix = renderRowSuffix?.(session) ?? null;
+      const defaultSuffix =
+        hasMultipleProjects && session._projectName ? (
+          <span className={styles.sessionProject}>{session._projectName}</span>
+        ) : null;
+      const suffix = customSuffix !== null ? customSuffix : defaultSuffix;
+      const snoozed =
+        session.status !== "archived" &&
+        isSessionSnoozed(session, snoozeClockMs);
+      return {
+        id: session.session_id,
+        label,
+        detail:
+          snoozed && session.snoozed_until
+            ? formatSessionWakeLabel(session.snoozed_until)
+            : undefined,
+        icon: snoozed ? (
+          <AlarmClock size={13} aria-label="Snoozed" />
+        ) : session.pinned_at ? (
+          <Pin size={13} aria-label="Pinned" />
+        ) : undefined,
+        leadingIndicator: (
+          <SessionStreamingDot
+            session={session}
+            streamKeyForSession={streamKeyForSession}
+          />
+        ),
+        suffix,
+        onSelect: () => onSessionClick(session),
+        onMouseEnter: () => handleRowMouseEnter(session),
+        onFocus: () => handleRowMouseEnter(session),
+        onVisibilityChange: (visible: boolean) =>
+          handleVisibilityChange(session.session_id, visible),
+      };
+    },
     [
-      buckets,
       renderRowSuffix,
       hasMultipleProjects,
+      snoozeClockMs,
       streamKeyForSession,
       onSessionClick,
       handleRowMouseEnter,
       handleVisibilityChange,
+    ],
+  );
+
+  const sections = useMemo<SidekickListSection[]>(
+    () => [
+      ...(pinnedRows.length > 0
+        ? [
+            {
+              id: "pinned",
+              label: "Pinned",
+              rows: pinnedRows.map(toSidekickRow),
+            },
+          ]
+        : []),
+      ...buckets.map((bucket) => ({
+        id: bucket.label,
+        label: bucket.label,
+        rows: bucket.rows.map(toSidekickRow),
+      })),
+      ...(snoozedRows.length > 0
+        ? [
+            {
+              id: "snoozed",
+              label: "Snoozed",
+              rows: snoozedRows.map(toSidekickRow),
+              defaultExpanded: Boolean(searchQuery?.trim()),
+            },
+          ]
+        : []),
+      ...(archivedRows.length > 0
+        ? [
+            {
+              id: "archived",
+              label: `Archived (${archivedRows.length})`,
+              rows: archivedRows.map(toSidekickRow),
+              defaultExpanded: archivedRows.some(
+                ({ session }) => session.session_id === selectedSessionId,
+              ),
+            },
+          ]
+        : []),
+    ],
+    [
+      buckets,
+      pinnedRows,
+      snoozedRows,
+      archivedRows,
+      searchQuery,
+      selectedSessionId,
+      toSidekickRow,
     ],
   );
 
@@ -318,14 +553,53 @@ export function SessionsList({
   return (
     <>
       {errorBanner}
+      {renameTarget ? (
+        <form
+          className={styles.renameForm}
+          onSubmit={submitRename}
+          aria-label="Rename session"
+        >
+          <input
+            autoFocus
+            value={renameValue}
+            onChange={(event) => setRenameValue(event.target.value)}
+            maxLength={120}
+            aria-label="Session title"
+          />
+          <button type="submit" disabled={!renameValue.trim()}>
+            Save
+          </button>
+          <button type="button" onClick={cancelRename}>
+            Cancel
+          </button>
+        </form>
+      ) : null}
       <SidekickList
         sections={sections}
         selectedId={effectiveSelectedSessionId}
         loading={loading && safeSessions.length === 0}
         loadingLabel="Loading sessions..."
         empty={<EmptyState>No sessions yet</EmptyState>}
-        menuActions={onDeleteSession ? ["delete"] : undefined}
-        onMenuAction={onDeleteSession ? handleMenuAction : undefined}
+        menuActions={
+          onRenameSession ||
+          onSetSessionPinned ||
+          onSetSessionSnoozedUntil ||
+          onDeleteSession ||
+          onArchiveSession ||
+          onRestoreSession
+            ? menuActionsForRow
+            : undefined
+        }
+        onMenuAction={
+          onRenameSession ||
+          onSetSessionPinned ||
+          onSetSessionSnoozedUntil ||
+          onDeleteSession ||
+          onArchiveSession ||
+          onRestoreSession
+            ? handleMenuAction
+            : undefined
+        }
         className={styles.chatsList}
       />
     </>

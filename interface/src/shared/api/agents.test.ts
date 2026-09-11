@@ -372,6 +372,95 @@ describe("sessionsApi", () => {
     );
   });
 
+  it("archives and restores a session through the archive resource", async () => {
+    const fetchMock = mockFetch(204, null);
+    globalThis.fetch = fetchMock;
+
+    await sessionsApi.archiveSession("p1" as string, "ai1" as string, "s1");
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/projects/p1/agents/ai1/sessions/s1/archive",
+      expect.objectContaining({ method: "POST" }),
+    );
+
+    await sessionsApi.restoreArchivedSession(
+      "p1" as string,
+      "ai1" as string,
+      "s1",
+    );
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/projects/p1/agents/ai1/sessions/s1/archive",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
+  it("renames a session through its title resource", async () => {
+    const fetchMock = mockFetch(204, null);
+    globalThis.fetch = fetchMock;
+    await sessionsApi.renameSession(
+      "p1" as string,
+      "ai1" as string,
+      "s1",
+      "A clearer title",
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/projects/p1/agents/ai1/sessions/s1/title",
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({ title: "A clearer title" }),
+      }),
+    );
+  });
+
+  it("sets durable session pin state", async () => {
+    const fetchMock = mockFetch(204, null);
+    globalThis.fetch = fetchMock;
+    await sessionsApi.setSessionPinned(
+      "p1" as string,
+      "ai1" as string,
+      "s1",
+      true,
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/projects/p1/agents/ai1/sessions/s1/pin",
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({ pinned: true }),
+      }),
+    );
+  });
+
+  it("snoozes and wakes a session", async () => {
+    const fetchMock = mockFetch(204, null);
+    globalThis.fetch = fetchMock;
+    await sessionsApi.setSessionSnoozedUntil(
+      "p1" as string,
+      "ai1" as string,
+      "s1",
+      "2026-09-01T13:00:00Z",
+    );
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/projects/p1/agents/ai1/sessions/s1/snooze",
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({ snoozedUntil: "2026-09-01T13:00:00Z" }),
+      }),
+    );
+
+    await sessionsApi.setSessionSnoozedUntil(
+      "p1" as string,
+      "ai1" as string,
+      "s1",
+      null,
+    );
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/projects/p1/agents/ai1/sessions/s1/snooze",
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({ wake: true }),
+      }),
+    );
+  });
+
   it("listSessionTasks fetches tasks for session", async () => {
     const fetchMock = mockFetch(200, []);
     globalThis.fetch = fetchMock;

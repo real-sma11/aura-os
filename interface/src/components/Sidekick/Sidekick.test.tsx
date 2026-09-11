@@ -1,8 +1,17 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+const mockUseTerminalTarget = vi.hoisted(() => vi.fn(() => ({
+  remoteAgentId: undefined,
+  remoteAgentInstanceId: undefined,
+  localAgentInstanceId: undefined,
+  remoteWorkspacePath: undefined,
+  workspacePath: "/test/path",
+  status: "ready" as const,
+})));
+
 vi.mock("@cypher-asi/zui", () => ({
-  Button: ({ children, title, disabled, onClick, icon, selected, ...rest }: Record<string, unknown>) => (
+  Button: ({ children, title, disabled, onClick, icon, ...rest }: Record<string, unknown>) => (
     <button
       title={title as string}
       disabled={disabled as boolean}
@@ -34,7 +43,9 @@ const mockSidekick = {
 
 vi.mock("../../stores/sidekick-store", () => ({
   useSidekickStore: Object.assign(
-    vi.fn((selector?: (s: any) => any) => selector ? selector(mockSidekick) : mockSidekick),
+    vi.fn((selector?: (s: typeof mockSidekick) => unknown) =>
+      selector ? selector(mockSidekick) : mockSidekick,
+    ),
     { getState: () => mockSidekick, subscribe: vi.fn(() => vi.fn()) },
   ),
 }));
@@ -65,30 +76,33 @@ vi.mock("../../stores/terminal-panel-store", () => ({
 }));
 
 let linkedWorkspace = true;
+let remoteOnly = false;
 vi.mock("../../hooks/use-aura-capabilities", () => ({
   useAuraCapabilities: () => ({
     features: { linkedWorkspace },
+    hostedLocalHarness: false,
+    remoteOnly,
   }),
 }));
 
 const mockNavigate = vi.fn();
+let mockLocation = {
+  pathname: "/projects/proj-1/agents/agent-inst-1",
+  search: "",
+  hash: "",
+};
 let mockParams: { projectId?: string; agentInstanceId?: string } = {
   projectId: "proj-1",
   agentInstanceId: "agent-inst-1",
 };
 vi.mock("react-router-dom", () => ({
   useNavigate: () => mockNavigate,
+  useLocation: () => mockLocation,
   useParams: () => mockParams,
 }));
 
 vi.mock("../../hooks/use-terminal-target", () => ({
-  useTerminalTarget: () => ({
-    remoteAgentId: undefined,
-    remoteAgentInstanceId: undefined,
-    remoteWorkspacePath: undefined,
-    workspacePath: "/test/path",
-    status: "ready",
-  }),
+  useTerminalTarget: mockUseTerminalTarget,
 }));
 
 vi.mock("../../shared/hooks/use-click-outside", () => ({
@@ -108,7 +122,15 @@ vi.mock("../PanelSearch", () => ({
   PanelSearch: () => <div data-testid="panel-search" />,
 }));
 vi.mock("../FileExplorer", () => ({
-  FileExplorer: () => <div data-testid="file-explorer" />,
+  FileExplorer: ({ onFileSelect }: { onFileSelect?: (path: string) => void }) => (
+    <div data-testid="file-explorer">
+      {onFileSelect ? (
+        <button type="button" onClick={() => onFileSelect("/workspace/README.md")}>
+          Open README
+        </button>
+      ) : null}
+    </div>
+  ),
 }));
 vi.mock("../TaskOutputPanel", () => ({
   RunSidekickPane: () => <div data-testid="run-sidekick-pane" />,
@@ -150,8 +172,14 @@ beforeEach(() => {
   mockSidekick.activeTab = "tasks";
   mockSidekick.showInfo = false;
   linkedWorkspace = true;
+  remoteOnly = false;
   addTerminal.mockClear();
   mockParams = { projectId: "proj-1", agentInstanceId: "agent-inst-1" };
+  mockLocation = {
+    pathname: "/projects/proj-1/agents/agent-inst-1",
+    search: "",
+    hash: "",
+  };
 });
 
 describe("SidekickHeader", () => {
@@ -183,14 +211,15 @@ describe("SidekickTaskbar", () => {
     expect(labels).toEqual([
       "Chats",
       "Terminal",
+      "Source Control",
       "Preview",
+      "Files",
       "Plans",
       "Run",
       "Loop Engineering",
       "Tasks",
       "Stats",
       "Logs",
-      "Files",
       "More actions",
     ]);
   });
@@ -238,6 +267,29 @@ describe("SidekickTaskbar", () => {
 });
 
 describe("SidekickContent", () => {
+  it("prefers local workspace routing when the client can access it", () => {
+    mockParams = { projectId: "proj-1" };
+    render(<SidekickContent />);
+
+    expect(mockUseTerminalTarget).toHaveBeenCalledWith({
+      projectId: "proj-1",
+      agentInstanceId: undefined,
+      preferLocalWorkspace: true,
+    });
+  });
+
+  it("keeps remote workspace routing for remote-only clients", () => {
+    remoteOnly = true;
+    mockParams = { projectId: "proj-1" };
+    render(<SidekickContent />);
+
+    expect(mockUseTerminalTarget).toHaveBeenCalledWith({
+      projectId: "proj-1",
+      agentInstanceId: undefined,
+      preferLocalWorkspace: false,
+    });
+  });
+
   it("shows empty state when no project context and not on a project route", () => {
     projectCtx = null;
     mockParams = {};
@@ -330,4 +382,36 @@ describe("SidekickContent", () => {
     expect(screen.getByText("Project Info")).toBeInTheDocument();
     expect(screen.getByText("Status")).toBeInTheDocument();
   });
+
+  it("preserves the source route when a remote file opens in the IDE", async () => {
+    const user = userEvent.setup();
+    mockSidekick.activeTab = "files";
+    mockLocation = {
+      pathname: "/projects/proj-1/agents/agent-inst-1",
+      search: "?panel=files",
+      hash: "#latest",
+    };
+    mockUseTerminalTarget.mockReturnValue({
+      remoteAgentId: "remote-agent-1",
+      remoteAgentInstanceId: "remote-instance-1",
+      localAgentInstanceId: undefined,
+      remoteWorkspacePath: "/workspace",
+      workspacePath: "/workspace",
+      status: "ready",
+    });
+
+    render(<SidekickContent />);
+    await user.click(screen.getByRole("button", { name: "Open README" }));
+
+    expect(mockNavigate).toHaveBeenCalledWith(
+      "/ide?file=%2Fworkspace%2FREADME.md&remoteAgentId=remote-agent-1",
+      {
+        state: {
+          returnTo:
+            "/projects/proj-1/agents/agent-inst-1?panel=files#latest",
+        },
+      },
+    );
+  });
+
 });

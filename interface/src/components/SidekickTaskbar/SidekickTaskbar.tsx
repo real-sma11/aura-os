@@ -19,6 +19,7 @@ import {
   ChartNoAxesColumnIncreasing,
   MessageSquare,
   FolderClosed,
+  GitBranch,
   SquareTerminal,
   MonitorPlay,
 } from "lucide-react";
@@ -60,7 +61,7 @@ export function SidekickTaskbar() {
     })),
   );
   const ctx = useProjectActions();
-  const { features } = useAuraCapabilities();
+  const { features, hostedLocalHarness } = useAuraCapabilities();
   const { projectId, agentInstanceId } = useParams<{ projectId: string; agentInstanceId: string }>();
   const terminalTarget = useTerminalTarget({ projectId, agentInstanceId });
   const workspaceAccess = resolveWorkspaceAccess({
@@ -70,6 +71,12 @@ export function SidekickTaskbar() {
     linkedWorkspace: features.linkedWorkspace,
   });
   const canUseWorkspace = workspaceAccess.canUseWorkspace;
+  const canUseHostedFiles = Boolean(
+    hostedLocalHarness && projectId && terminalTarget.localAgentInstanceId,
+  );
+  const canUseFiles = canUseWorkspace || canUseHostedFiles;
+  const canUseSourceControl =
+    workspaceAccess.canUseWorkspace && workspaceAccess.kind === "local";
   const startAgentInstanceId =
     workspaceAccess.kind === "remote"
       ? terminalTarget.remoteAgentInstanceId
@@ -92,10 +99,14 @@ export function SidekickTaskbar() {
   const runActive = !!runActivity && isLoopActivityActive(runActivity.status);
 
   useEffect(() => {
-    if (!canUseWorkspace && (activeTab === "files" || activeTab === "terminal")) {
+    if (
+      (!canUseFiles && activeTab === "files") ||
+      (!canUseWorkspace && activeTab === "terminal") ||
+      (!canUseSourceControl && activeTab === "source-control")
+    ) {
       setActiveTab("sessions");
     }
-  }, [activeTab, canUseWorkspace, setActiveTab]);
+  }, [activeTab, canUseFiles, canUseSourceControl, canUseWorkspace, setActiveTab]);
   useEffect(() => {
     if (automationStartAvailable || !loopEngineeringOpen) return;
     setLoopEngineeringOpen(false);
@@ -120,7 +131,19 @@ export function SidekickTaskbar() {
             },
           ]
         : []),
+      ...(canUseSourceControl
+        ? [
+            {
+              id: "source-control",
+              icon: <GitBranch size={16} />,
+              title: "Source Control",
+            },
+          ]
+        : []),
       { id: "browser", icon: <MonitorPlay size={16} />, title: "Preview" },
+      ...(canUseFiles
+        ? [{ id: "files", icon: <FolderClosed size={16} />, title: "Files" }]
+        : []),
       { id: "specs", icon: <File size={16} />, title: "Plans" },
       {
         id: "run",
@@ -159,22 +182,26 @@ export function SidekickTaskbar() {
       // Stats is a primary navigation destination (asserted by the
       // core smoke + workflow evals), so it must stay in the visible
       // tab row. The sidekick lane only fits ~7 icon tabs at its
-      // default 320px width, so keeping Stats ahead of the more
-      // secondary Log/Files tabs ensures Log/Files (not Stats) are the
-      // ones that fall into the overflow "More" menu on narrow panels.
+      // default 320px width. Files is intentionally pinned beside Preview;
+      // Logs remains the secondary destination that can enter overflow.
       {
         id: "stats",
         icon: <ChartNoAxesColumnIncreasing size={16} />,
         title: "Stats",
       },
       { id: "log", icon: <ClipboardClock size={16} />, title: "Logs" },
-      { id: "files", icon: <FolderClosed size={16} />, title: "Files" },
     ];
     return items;
-  }, [tasksActive, runActive, loopProjectId, canUseWorkspace, automationStartAvailable]);
-  const visibleTabs = canUseWorkspace
-    ? tabs
-    : tabs.filter((tab) => tab.id !== "files" && tab.id !== "terminal");
+  }, [
+    tasksActive,
+    runActive,
+    loopProjectId,
+    canUseWorkspace,
+    canUseFiles,
+    canUseSourceControl,
+    automationStartAvailable,
+  ]);
+  const visibleTabs = tabs;
 
   const actions = useMemo<MenuItem[]>(() => {
     if (!project) return [];

@@ -11,6 +11,7 @@ export type TerminalTargetStatus = "loading" | "ready" | "error";
 export interface TerminalTarget {
   remoteAgentId: string | undefined;
   remoteAgentInstanceId: string | undefined;
+  localAgentInstanceId: string | undefined;
   remoteWorkspacePath: string | undefined;
   workspacePath: string | undefined;
   status: TerminalTargetStatus;
@@ -31,16 +32,33 @@ interface UseTerminalTargetArgs {
   agentId?: string;
   selectedAgent?: SelectedAgentLike | null;
   agentsStatus?: "idle" | "loading" | "ready" | "error";
+  preferLocalWorkspace?: boolean;
 }
 
 function resolveProjectWorkspace(
   instances: AgentInstance[],
+  preferLocalWorkspace: boolean,
 ): {
   remoteAgentId?: string;
   remoteAgentInstanceId?: string;
+  localAgentInstanceId?: string;
   remoteWorkspacePath?: string;
   workspacePath?: string;
 } {
+  const localWithWorkspace = instances.find((i) => (
+    i.machine_type !== "remote" && Boolean(i.workspace_path?.trim())
+  ));
+  if (preferLocalWorkspace && localWithWorkspace) {
+    const workspacePath = localWithWorkspace.workspace_path ?? undefined;
+    return {
+      remoteAgentId: undefined,
+      remoteAgentInstanceId: undefined,
+      localAgentInstanceId: localWithWorkspace.agent_instance_id,
+      remoteWorkspacePath: undefined,
+      workspacePath,
+    };
+  }
+
   const remoteWithWorkspace = instances.find((i) => (
     i.machine_type === "remote" && Boolean(i.workspace_path?.trim())
   ));
@@ -49,20 +67,18 @@ function resolveProjectWorkspace(
     return {
       remoteAgentId: remoteWithWorkspace.agent_id,
       remoteAgentInstanceId: remoteWithWorkspace.agent_instance_id,
+      localAgentInstanceId: undefined,
       remoteWorkspacePath: workspacePath,
       workspacePath,
     };
   }
 
-  const local = instances.find((i) => {
-    const workspacePath = i.workspace_path?.trim();
-    return Boolean(workspacePath);
-  });
-  const workspacePath = local?.workspace_path ?? undefined;
-  if (workspacePath) {
+  if (localWithWorkspace) {
+    const workspacePath = localWithWorkspace.workspace_path ?? undefined;
     return {
       remoteAgentId: undefined,
       remoteAgentInstanceId: undefined,
+      localAgentInstanceId: localWithWorkspace.agent_instance_id,
       remoteWorkspacePath: undefined,
       workspacePath,
     };
@@ -73,14 +89,17 @@ function resolveProjectWorkspace(
     return {
       remoteAgentId: remote.agent_id,
       remoteAgentInstanceId: remote.agent_instance_id,
+      localAgentInstanceId: undefined,
       remoteWorkspacePath: undefined,
       workspacePath: undefined,
     };
   }
 
+  const hostedLocal = instances.find((i) => i.machine_type !== "remote");
   return {
     remoteAgentId: undefined,
     remoteAgentInstanceId: undefined,
+    localAgentInstanceId: hostedLocal?.agent_instance_id,
     remoteWorkspacePath: undefined,
     workspacePath: undefined,
   };
@@ -93,6 +112,7 @@ export function useTerminalTarget(args: UseTerminalTargetArgs): TerminalTarget {
     agentId,
     selectedAgent,
     agentsStatus,
+    preferLocalWorkspace = false,
   } = args;
   const selectedAgentId = selectedAgent?.agent_id;
   const selectedAgentMachineType = selectedAgent?.machine_type;
@@ -102,6 +122,7 @@ export function useTerminalTarget(args: UseTerminalTargetArgs): TerminalTarget {
       return {
         remoteAgentId: undefined,
         remoteAgentInstanceId: undefined,
+        localAgentInstanceId: undefined,
         remoteWorkspacePath: undefined,
         workspacePath: undefined,
         status: "ready",
@@ -112,6 +133,7 @@ export function useTerminalTarget(args: UseTerminalTargetArgs): TerminalTarget {
       return {
         remoteAgentId: selectedAgentMachineType === "remote" ? selectedAgentId : undefined,
         remoteAgentInstanceId: undefined,
+        localAgentInstanceId: undefined,
         remoteWorkspacePath: undefined,
         workspacePath: undefined,
         status: "ready",
@@ -142,6 +164,7 @@ export function useTerminalTarget(args: UseTerminalTargetArgs): TerminalTarget {
       return {
         remoteAgentId: undefined,
         remoteAgentInstanceId: undefined,
+        localAgentInstanceId: undefined,
         remoteWorkspacePath: undefined,
         workspacePath: undefined,
         status: "error",
@@ -152,6 +175,7 @@ export function useTerminalTarget(args: UseTerminalTargetArgs): TerminalTarget {
       return {
         remoteAgentId: undefined,
         remoteAgentInstanceId: undefined,
+        localAgentInstanceId: undefined,
         remoteWorkspacePath: undefined,
         workspacePath: undefined,
         status: "loading",
@@ -164,6 +188,9 @@ export function useTerminalTarget(args: UseTerminalTargetArgs): TerminalTarget {
       remoteAgentInstanceId: isRemote
         ? agentInstanceQuery.data.agent_instance_id
         : undefined,
+      localAgentInstanceId: isRemote
+        ? undefined
+        : agentInstanceQuery.data.agent_instance_id,
       remoteWorkspacePath: isRemote
         ? (agentInstanceQuery.data.workspace_path ?? undefined)
         : undefined,
@@ -177,6 +204,7 @@ export function useTerminalTarget(args: UseTerminalTargetArgs): TerminalTarget {
       return {
         remoteAgentId: undefined,
         remoteAgentInstanceId: undefined,
+        localAgentInstanceId: undefined,
         remoteWorkspacePath: undefined,
         workspacePath: undefined,
         status: "error",
@@ -187,16 +215,21 @@ export function useTerminalTarget(args: UseTerminalTargetArgs): TerminalTarget {
       return {
         remoteAgentId: undefined,
         remoteAgentInstanceId: undefined,
+        localAgentInstanceId: undefined,
         remoteWorkspacePath: undefined,
         workspacePath: undefined,
         status: "loading",
       };
     }
 
-    const resolvedWorkspace = resolveProjectWorkspace(projectAgentsQuery.data);
+    const resolvedWorkspace = resolveProjectWorkspace(
+      projectAgentsQuery.data,
+      preferLocalWorkspace,
+    );
     return {
       remoteAgentId: resolvedWorkspace.remoteAgentId,
       remoteAgentInstanceId: resolvedWorkspace.remoteAgentInstanceId,
+      localAgentInstanceId: resolvedWorkspace.localAgentInstanceId,
       remoteWorkspacePath: resolvedWorkspace.remoteWorkspacePath,
       workspacePath: resolvedWorkspace.workspacePath,
       status: "ready",
@@ -207,6 +240,7 @@ export function useTerminalTarget(args: UseTerminalTargetArgs): TerminalTarget {
     return {
       remoteAgentId: undefined,
       remoteAgentInstanceId: undefined,
+      localAgentInstanceId: undefined,
       remoteWorkspacePath: undefined,
       workspacePath: undefined,
       status: agentsStatus === "error" ? "error" : "loading",
@@ -216,6 +250,7 @@ export function useTerminalTarget(args: UseTerminalTargetArgs): TerminalTarget {
   const emptyState: TerminalTargetState = {
     remoteAgentId: undefined,
     remoteAgentInstanceId: undefined,
+    localAgentInstanceId: undefined,
     remoteWorkspacePath: undefined,
     workspacePath: undefined,
     status: "ready",

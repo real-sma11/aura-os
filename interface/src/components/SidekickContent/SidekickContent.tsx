@@ -1,6 +1,6 @@
-import { lazy, Suspense, useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
+import { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
-import { useParams, useNavigate } from "react-router-dom";
+import { useLocation, useParams, useNavigate } from "react-router-dom";
 import { cn } from "@cypher-asi/zui";
 import { RefreshCw } from "lucide-react";
 import { EmptyState } from "../EmptyState";
@@ -16,9 +16,11 @@ import { StatsDashboard } from "../../views/StatsDashboard";
 import { SessionList } from "../../views/SessionList";
 import { SidekickLog } from "../../views/SidekickLog";
 import { FileExplorer } from "../FileExplorer";
+import { SourceControlWorkbench } from "../SourceControlWorkbench";
 import { useAuraCapabilities } from "../../hooks/use-aura-capabilities";
 import { useTerminalTarget } from "../../hooks/use-terminal-target";
 import { resolveWorkspaceAccess } from "../../shared/lib/workspace-access";
+import { buildIdeNavigationState } from "../../shared/lib/ide-navigation";
 import { InfoPanel } from "./InfoPanel";
 import styles from "../Sidekick/Sidekick.module.css";
 
@@ -54,19 +56,25 @@ export function SidekickContent() {
   const ctx = useProjectActions();
   const projectId = ctx?.project.project_id;
   const [searchQuery, setSearchQuery] = useState("");
-  const { features, remoteOnly } = useAuraCapabilities();
+  const { features, hostedLocalHarness, remoteOnly } = useAuraCapabilities();
   const { projectId: routeProjectId, agentInstanceId } = useParams<{
     projectId: string;
     agentInstanceId: string;
   }>();
   const {
     remoteAgentId,
+    localAgentInstanceId,
     remoteWorkspacePath,
     workspacePath,
     status: terminalTargetStatus,
   } =
-    useTerminalTarget({ projectId: routeProjectId, agentInstanceId });
+    useTerminalTarget({
+      projectId: routeProjectId ?? projectId,
+      agentInstanceId,
+      preferLocalWorkspace: !remoteOnly,
+    });
   const navigate = useNavigate();
+  const location = useLocation();
   const [fileRefreshKey, setFileRefreshKey] = useState(0);
   const tabContentRef = useRef<HTMLDivElement>(null);
 
@@ -75,10 +83,44 @@ export function SidekickContent() {
       if (remoteAgentId) {
         navigate(
           `/ide?file=${encodeURIComponent(filePath)}&remoteAgentId=${encodeURIComponent(remoteAgentId)}`,
+          {
+            state: buildIdeNavigationState(
+              location.pathname,
+              location.search,
+              location.hash,
+            ),
+          },
         );
       }
     },
-    [remoteAgentId, navigate],
+    [location.hash, location.pathname, location.search, remoteAgentId, navigate],
+  );
+  const hostedProjectId = routeProjectId ?? projectId;
+  const hostedWorkspace = useMemo(
+    () =>
+      hostedLocalHarness && hostedProjectId && localAgentInstanceId
+        ? {
+            projectId: hostedProjectId,
+            agentInstanceId: localAgentInstanceId,
+          }
+        : undefined,
+    [hostedLocalHarness, hostedProjectId, localAgentInstanceId],
+  );
+  const handleHostedFileSelect = useCallback(
+    (filePath: string) => {
+      if (!hostedWorkspace) return;
+      navigate(
+        `/ide?file=${encodeURIComponent(filePath)}&projectId=${encodeURIComponent(hostedWorkspace.projectId)}&agentInstanceId=${encodeURIComponent(hostedWorkspace.agentInstanceId)}`,
+        {
+          state: buildIdeNavigationState(
+            location.pathname,
+            location.search,
+            location.hash,
+          ),
+        },
+      );
+    },
+    [hostedWorkspace, location.hash, location.pathname, location.search, navigate],
   );
 
   useEffect(() => {
@@ -102,7 +144,7 @@ export function SidekickContent() {
     ? "The attached remote agent has not reported a live workspace yet."
     : features.linkedWorkspace
       ? "This project does not currently expose a live local agent workspace."
-      : "File browsing stays in the desktop app for now.";
+      : "This project does not currently expose a live agent workspace.";
   const terminalEmptyMessage = remoteAgentId
     ? "The attached remote agent has not reported a live terminal workspace yet."
     : features.linkedWorkspace
@@ -123,14 +165,23 @@ export function SidekickContent() {
   const searchable =
     activeTab !== "stats" &&
     activeTab !== "terminal" &&
-    activeTab !== "browser";
+    activeTab !== "browser" &&
+    activeTab !== "source-control";
 
-  const filesContent = workspaceAccess.canUseWorkspace ? (
+  const filesContent = workspaceAccess.canUseWorkspace || hostedWorkspace ? (
     <FileExplorer
-      rootPath={workspaceAccess.workspacePath}
+      rootPath={hostedWorkspace ? undefined : workspaceAccess.workspacePath}
+      rootLabel={hostedWorkspace ? "Project files" : undefined}
       searchQuery={searchQuery}
       remoteAgentId={remoteAgentId}
-      onFileSelect={remoteAgentId ? handleRemoteFileSelect : undefined}
+      hostedWorkspace={hostedWorkspace}
+      onFileSelect={
+        hostedWorkspace
+          ? handleHostedFileSelect
+          : remoteAgentId
+            ? handleRemoteFileSelect
+            : undefined
+      }
       refreshTrigger={fileRefreshKey}
     />
   ) : (
@@ -164,6 +215,17 @@ export function SidekickContent() {
       <Suspense fallback={sidekickPaneFallback}>
         <RunSidekickPane searchQuery={searchQuery} />
       </Suspense>
+    ) : activeTab === "source-control" ? (
+      workspaceAccess.kind === "local" ? (
+        <SourceControlWorkbench
+          projectId={project.project_id}
+          agentInstanceId={agentInstanceId}
+        />
+      ) : (
+        <EmptyState>
+          Source control is available for local desktop workspaces.
+        </EmptyState>
+      )
     ) : activeTab === "specs" ? (
       <SpecList searchQuery={searchQuery} />
     ) : activeTab === "tasks" ? (
@@ -212,12 +274,16 @@ export function SidekickContent() {
         />
       )}
       <div className={styles.sidekickContent}>
-        {(activeTab === "run" || activeTab === "terminal" || activeTab === "browser") &&
+        {(activeTab === "run" ||
+          activeTab === "terminal" ||
+          activeTab === "browser" ||
+          activeTab === "source-control") &&
           activeContent}
         {activeTab !== "log" &&
           activeTab !== "run" &&
           activeTab !== "terminal" &&
-          activeTab !== "browser" && (
+          activeTab !== "browser" &&
+          activeTab !== "source-control" && (
           <div className={styles.tabContentShell}>
             <div ref={tabContentRef} className={styles.tabContent}>
               {activeContent}

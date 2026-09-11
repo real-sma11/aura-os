@@ -3,8 +3,12 @@ use axum::routing::{get, post};
 use axum::Router;
 
 use crate::handlers::project_artifacts::THUMBNAIL_MAX_BYTES;
-use crate::handlers::{files, project_artifacts, project_stats, projects};
+use crate::handlers::{
+    files, hosted_workspace_files, project_artifacts, project_stats, projects, source_control,
+};
 use crate::state::AppState;
+
+const WORKSPACE_WRITE_REQUEST_MAX_BYTES: usize = 1024 * 1024;
 
 pub(super) fn project_routes() -> Router<AppState> {
     Router::new()
@@ -33,6 +37,39 @@ pub(super) fn project_routes() -> Router<AppState> {
         .route(
             "/api/projects/:project_id/stats",
             get(project_stats::get_project_stats),
+        )
+        .route(
+            "/api/projects/:project_id/source-control",
+            get(source_control::get_status),
+        )
+        .route(
+            "/api/projects/:project_id/source-control/diff",
+            get(source_control::get_diff),
+        )
+        .route(
+            "/api/projects/:project_id/source-control/stage",
+            post(source_control::stage_paths),
+        )
+        .route(
+            "/api/projects/:project_id/source-control/unstage",
+            post(source_control::unstage_paths),
+        )
+        .route(
+            "/api/projects/:project_id/source-control/commit",
+            post(source_control::commit),
+        )
+        .route(
+            "/api/projects/:project_id/agents/:agent_instance_id/workspace/files",
+            get(hosted_workspace_files::list_hosted_workspace_files),
+        )
+        .route(
+            "/api/projects/:project_id/agents/:agent_instance_id/workspace/read-file",
+            get(hosted_workspace_files::read_hosted_workspace_file),
+        )
+        .route(
+            "/api/projects/:project_id/agents/:agent_instance_id/workspace/write-file",
+            axum::routing::put(hosted_workspace_files::write_hosted_workspace_file)
+                .layer(DefaultBodyLimit::max(WORKSPACE_WRITE_REQUEST_MAX_BYTES)),
         )
         // Project artifacts (images, 3D models)
         .route(

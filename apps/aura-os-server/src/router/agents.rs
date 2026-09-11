@@ -1,10 +1,12 @@
 use axum::extract::DefaultBodyLimit;
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, post, put};
 use axum::Router;
 
 use super::ATTACHMENT_REQUEST_MAX_BYTES;
 use crate::handlers::{agents, remote_files, shares, swarm};
 use crate::state::AppState;
+
+const WORKSPACE_WRITE_REQUEST_MAX_BYTES: usize = 1024 * 1024;
 
 pub(super) fn agent_routes() -> Router<AppState> {
     Router::new()
@@ -24,7 +26,11 @@ pub(super) fn agent_routes() -> Router<AppState> {
         )
         .route(
             "/api/agents/:agent_id/projects",
-            get(agents::list_agent_project_bindings),
+            get(agents::list_agent_project_bindings).post(agents::create_project_for_agent),
+        )
+        .route(
+            "/api/agents/:agent_id/projects/access",
+            post(agents::access_project_for_agent),
         )
         .route(
             "/api/agents/:agent_id/projects/:project_agent_id",
@@ -77,6 +83,11 @@ pub(super) fn agent_routes() -> Router<AppState> {
         .route(
             "/api/agents/:agent_id/remote_agent/read-file",
             post(remote_files::read_remote_file),
+        )
+        .route(
+            "/api/agents/:agent_id/remote_agent/write-file",
+            put(remote_files::write_remote_file)
+                .layer(DefaultBodyLimit::max(WORKSPACE_WRITE_REQUEST_MAX_BYTES)),
         )
         .route(
             "/api/agents/:agent_id/remote_agent/recover",
@@ -190,6 +201,22 @@ pub(super) fn agent_routes() -> Router<AppState> {
         .route(
             "/api/projects/:project_id/agents/:agent_instance_id/sessions/:session_id/branch",
             post(agents::branch_session),
+        )
+        .route(
+            "/api/projects/:project_id/agents/:agent_instance_id/sessions/:session_id/archive",
+            post(agents::archive_session).delete(agents::restore_archived_session),
+        )
+        .route(
+            "/api/projects/:project_id/agents/:agent_instance_id/sessions/:session_id/title",
+            put(agents::rename_session),
+        )
+        .route(
+            "/api/projects/:project_id/agents/:agent_instance_id/sessions/:session_id/pin",
+            put(agents::set_session_pin),
+        )
+        .route(
+            "/api/projects/:project_id/agents/:agent_instance_id/sessions/:session_id/snooze",
+            put(agents::set_session_snooze),
         )
         .route(
             "/api/projects/:project_id/agents/:agent_instance_id/sessions/:session_id/safe-workspace",

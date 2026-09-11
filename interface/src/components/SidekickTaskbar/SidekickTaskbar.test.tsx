@@ -15,11 +15,13 @@ const {
   mockUseAutomationStatus: vi.fn(),
   mockWorkspaceState: {
     linkedWorkspace: false,
+    hostedLocalHarness: false,
     terminalTarget: {
       remoteAgentId: null as string | null,
       remoteAgentInstanceId: null as string | null,
       remoteWorkspacePath: null as string | null,
       workspacePath: null as string | null,
+      localAgentInstanceId: null as string | null,
     },
   },
 }));
@@ -27,6 +29,7 @@ const {
 vi.mock("../../hooks/use-aura-capabilities", () => ({
   useAuraCapabilities: () => ({
     features: { linkedWorkspace: mockWorkspaceState.linkedWorkspace },
+    hostedLocalHarness: mockWorkspaceState.hostedLocalHarness,
   }),
 }));
 
@@ -177,11 +180,13 @@ describe("SidekickTaskbar", () => {
       clearStartError: vi.fn(),
     });
     mockWorkspaceState.linkedWorkspace = false;
+    mockWorkspaceState.hostedLocalHarness = false;
     mockWorkspaceState.terminalTarget = {
       remoteAgentId: null,
       remoteAgentInstanceId: null,
       remoteWorkspacePath: null,
       workspacePath: null,
+      localAgentInstanceId: null,
     };
   });
 
@@ -230,6 +235,7 @@ describe("SidekickTaskbar", () => {
     renderTaskbar();
 
     expect(screen.getByTestId("tab-terminal")).toBeInTheDocument();
+    expect(screen.getByTestId("tab-source-control")).toBeInTheDocument();
     expect(screen.getByTestId("tab-files")).toBeInTheDocument();
   });
 
@@ -245,7 +251,49 @@ describe("SidekickTaskbar", () => {
     renderTaskbar();
 
     expect(screen.getByTestId("tab-terminal")).toBeInTheDocument();
+    expect(screen.queryByTestId("tab-source-control")).not.toBeInTheDocument();
     expect(screen.getByTestId("tab-files")).toBeInTheDocument();
+  });
+
+  it("shows hosted Files beside Preview without exposing desktop-only workspace tools", () => {
+    mockWorkspaceState.hostedLocalHarness = true;
+    mockWorkspaceState.terminalTarget = {
+      remoteAgentId: null,
+      remoteAgentInstanceId: null,
+      localAgentInstanceId: "local-inst-1",
+      remoteWorkspacePath: null,
+      workspacePath: null,
+    };
+
+    renderTaskbar();
+
+    expect(screen.getByTestId("tab-files")).toBeInTheDocument();
+    expect(screen.queryByTestId("tab-terminal")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("tab-source-control")).not.toBeInTheDocument();
+    const tabs = screen.getByTestId("sidekick-tabbar");
+    const orderedIds = Array.from(tabs.querySelectorAll("button")).map((button) =>
+      button.getAttribute("data-testid"),
+    );
+    expect(orderedIds.indexOf("tab-files")).toBe(orderedIds.indexOf("tab-browser") + 1);
+  });
+
+  it("redirects stale Source Control state when only a remote workspace is available", async () => {
+    useSidekickStore.setState({ activeTab: "source-control" });
+    mockWorkspaceState.terminalTarget = {
+      remoteAgentId: "remote-agent-1",
+      remoteAgentInstanceId: "remote-inst-1",
+      remoteWorkspacePath: "/workspace/project",
+      workspacePath: "/workspace/project",
+    };
+
+    renderTaskbar();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("sidekick-tabbar")).toHaveAttribute(
+        "data-active-tab",
+        "sessions",
+      ),
+    );
   });
 
   it("keeps browseable remote tabs but hides Loop Engineering without a remote instance id", () => {

@@ -17,6 +17,10 @@ export interface Session {
   total_input_tokens: number;
   total_output_tokens: number;
   summary_of_previous_context: string;
+  /** Persistent conversation pin. Absent on older server deployments. */
+  pinned_at?: string | null;
+  /** Future wake time for a temporarily hidden conversation. */
+  snoozed_until?: string | null;
   status: SessionStatus;
   user_id?: string;
   model?: string;

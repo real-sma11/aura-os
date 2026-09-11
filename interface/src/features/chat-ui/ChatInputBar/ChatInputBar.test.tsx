@@ -127,8 +127,10 @@ vi.mock("./useFileAttachments", () => ({
 import { ChatInputBar } from "../ChatInputBar";
 import { MobileChatInputBar } from "../../../mobile/chat/MobileChatInputBar";
 import { ENTER_SUBMIT_GRACE_MS } from "../../../components/InputBarShell/InputBarShell";
+import { MAX_CHAT_PROMPT_CHARACTERS } from "./composer-length";
 import type { AttachmentItem } from "../ChatInputBar";
 import type { AgentInstance } from "../../../shared/types";
+import { usePromptStashStore } from "../../../stores/prompt-stash-store";
 
 function makeProps(overrides: Partial<Parameters<typeof ChatInputBar>[0]> = {}) {
   return {
@@ -217,9 +219,33 @@ beforeEach(() => {
   mockSetPinnedSourceImage.mockClear();
   mockAddFiles.mockClear();
   mockHandleRemove.mockClear();
+  localStorage.clear();
+  usePromptStashStore.setState({ entries: [] });
 });
 
 describe("ChatInputBar", () => {
+  it("keeps an oversized draft editable while blocking send", () => {
+    const onSend = vi.fn();
+    render(
+      <MemoryRouter>
+        <ChatInputBar
+          {...makeProps({
+            input: "a".repeat(MAX_CHAT_PROMPT_CHARACTERS + 12),
+            onSend,
+          })}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.getByText("Remove 12 characters to send this message."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("textbox")).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
   it("renders the textarea with placeholder", () => {
     render(<ChatInputBar {...makeProps()} />);
     expect(screen.getByPlaceholderText("/ for commands, @ for context")).toBeInTheDocument();
@@ -244,6 +270,27 @@ describe("ChatInputBar", () => {
 
     await user.type(screen.getByPlaceholderText("/ for commands, @ for context"), "H");
     expect(onInputChange).toHaveBeenCalled();
+  });
+
+  it("stashes the current desktop prompt with Cmd+S", () => {
+    const onInputChange = vi.fn();
+    render(
+      <ChatInputBar
+        {...makeProps({ input: "save this for another chat", onInputChange })}
+      />,
+    );
+
+    fireEvent.keyDown(screen.getByDisplayValue("save this for another chat"), {
+      key: "s",
+      metaKey: true,
+    });
+
+    expect(onInputChange).toHaveBeenCalledWith("");
+    expect(usePromptStashStore.getState().entries[0]?.prompt).toBe(
+      "save this for another chat",
+    );
+    expect(screen.getByRole("button", { name: "Prompt shelf, 1 saved" }))
+      .toBeInTheDocument();
   });
 
   it("opens slash commands only for the trailing token", () => {
@@ -1171,6 +1218,12 @@ describe("ChatInputBar", () => {
     );
   });
 
+  it("opens the prompt shelf from the mobile composer", async () => {
+    render(<MobileChatInputBar {...makeProps()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Prompt shelf" }));
+    expect(screen.getByRole("dialog", { name: "Saved prompts" })).toBeInTheDocument();
+  });
+
   it("sends exact project-agent bindings from the mobile composer", async () => {
     const onSend = vi.fn();
     const maya = {
@@ -1263,6 +1316,22 @@ describe("ChatInputBar", () => {
     expect(send).toBeDisabled();
     await user.click(send);
     expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("blocks oversized mobile drafts without disabling editing", () => {
+    render(
+      <MobileChatInputBar
+        {...makeProps({
+          input: "a".repeat(MAX_CHAT_PROMPT_CHARACTERS + 3),
+        })}
+      />,
+    );
+
+    expect(
+      screen.getByText("Remove 3 characters to send this message."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("textbox")).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
   });
 
   it("renders attachment previews", () => {

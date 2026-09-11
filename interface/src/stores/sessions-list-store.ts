@@ -15,7 +15,7 @@ import { sessionsApi } from "../shared/api/agents";
 // top-level `const useAuthStore = create(...)` is still running,
 // throwing "Cannot access 'useAuthStore' before initialization".
 import type { AnnotatedSession } from "../components/SessionsList";
-import type { Session } from "../shared/types";
+import type { Session, SessionStatus } from "../shared/types";
 
 /**
  * Server-authoritative project_agent binding for an agent template,
@@ -305,6 +305,8 @@ interface SessionsListStore {
   /** Optimistic delete; pair with `restoreSession` to undo on error. */
   removeSession: (surfaceKey: string, sessionId: string) => void;
   restoreSession: (surfaceKey: string, session: AnnotatedSession) => void;
+  /** Optimistically patch a session across every currently loaded surface. */
+  setSessionStatus: (sessionId: string, status: SessionStatus) => void;
   /**
    * Insert a placeholder row for a brand-new session immediately, before
    * the server has streamed back `SessionReady`. Caller should pair with
@@ -335,8 +337,14 @@ interface SessionsListStore {
    * "New chat" to the ChatGPT-style title before the assistant turn
    * finishes streaming. Surfaces that don't currently hold the row
    * keep their existing array reference to avoid spurious renders.
-   */
+  */
   setSessionSummary: (sessionId: string, summary: string) => void;
+  /** Optimistically patch durable pin state in every loaded surface. */
+  setSessionPinnedAt: (sessionId: string, pinnedAt: string | null) => void;
+  setSessionSnoozedUntil: (
+    sessionId: string,
+    snoozedUntil: string | null,
+  ) => void;
   /** Surface the user-facing reason a delete failed for `surfaceKey`. */
   setDeleteError: (surfaceKey: string, message: string | null) => void;
 }
@@ -894,6 +902,27 @@ export const useSessionsListStore = create<SessionsListStore>((set, get) => ({
     }));
   },
 
+  setSessionStatus: (sessionId, status) => {
+    set((state) => {
+      let changed = false;
+      const sessionsBySurface = Object.fromEntries(
+        Object.entries(state.sessionsBySurface).map(([surfaceKey, sessions]) => {
+          let surfaceChanged = false;
+          const next = sessions.map((session) => {
+            if (session.session_id !== sessionId || session.status === status) {
+              return session;
+            }
+            changed = true;
+            surfaceChanged = true;
+            return { ...session, status };
+          });
+          return [surfaceKey, surfaceChanged ? next : sessions];
+        }),
+      );
+      return changed ? { sessionsBySurface } : state;
+    });
+  },
+
   addOptimisticSession: (surfaceKey, session) => {
     const current = ensureAnnotatedSessionArray(
       get().sessionsBySurface[surfaceKey],
@@ -996,6 +1025,49 @@ export const useSessionsListStore = create<SessionsListStore>((set, get) => ({
       // title instead of leaving "New chat" until a manual refresh.
       ...(!foundRow ? { version: state.version + 1 } : {}),
     }));
+  },
+
+  setSessionPinnedAt: (sessionId, pinnedAt) => {
+    const sessionsBySurface = get().sessionsBySurface;
+    let mutated = false;
+    const nextBySurface: Record<string, AnnotatedSession[]> = {};
+    for (const [key, listValue] of Object.entries(sessionsBySurface)) {
+      const list = ensureAnnotatedSessionArray(listValue);
+      const idx = list.findIndex((session) => session.session_id === sessionId);
+      if (idx === -1 || (list[idx].pinned_at ?? null) === pinnedAt) {
+        nextBySurface[key] = list;
+        continue;
+      }
+      const nextList = list.slice();
+      nextList[idx] = { ...list[idx], pinned_at: pinnedAt };
+      nextBySurface[key] = nextList;
+      mutated = true;
+    }
+    if (mutated) {
+      set({ sessionsBySurface: nextBySurface });
+    }
+  },
+
+  setSessionSnoozedUntil: (sessionId, snoozedUntil) => {
+    const sessionsBySurface = get().sessionsBySurface;
+    let mutated = false;
+    const nextBySurface: Record<string, AnnotatedSession[]> = {};
+    for (const [key, listValue] of Object.entries(sessionsBySurface)) {
+      const list = ensureAnnotatedSessionArray(listValue);
+      const idx = list.findIndex((session) => session.session_id === sessionId);
+      if (
+        idx === -1 ||
+        (list[idx].snoozed_until ?? null) === snoozedUntil
+      ) {
+        nextBySurface[key] = list;
+        continue;
+      }
+      const nextList = list.slice();
+      nextList[idx] = { ...list[idx], snoozed_until: snoozedUntil };
+      nextBySurface[key] = nextList;
+      mutated = true;
+    }
+    if (mutated) set({ sessionsBySurface: nextBySurface });
   },
 
   setDeleteError: (surfaceKey, message) => {
@@ -1120,6 +1192,7 @@ interface SessionsListActions {
   loadProjectSessions: (projectId: string, projectName: string) => Promise<void>;
   removeSession: (surfaceKey: string, sessionId: string) => void;
   restoreSession: (surfaceKey: string, session: AnnotatedSession) => void;
+  setSessionStatus: (sessionId: string, status: SessionStatus) => void;
   addOptimisticSession: (surfaceKey: string, session: AnnotatedSession) => void;
   replaceSessionId: (
     surfaceKey: string,
@@ -1127,6 +1200,11 @@ interface SessionsListActions {
     newSessionId: string,
   ) => void;
   setSessionSummary: (sessionId: string, summary: string) => void;
+  setSessionPinnedAt: (sessionId: string, pinnedAt: string | null) => void;
+  setSessionSnoozedUntil: (
+    sessionId: string,
+    snoozedUntil: string | null,
+  ) => void;
   setDeleteError: (surfaceKey: string, message: string | null) => void;
 }
 
@@ -1144,9 +1222,12 @@ export function useSessionsListActions(): SessionsListActions {
       loadProjectSessions: s.loadProjectSessions,
       removeSession: s.removeSession,
       restoreSession: s.restoreSession,
+      setSessionStatus: s.setSessionStatus,
       addOptimisticSession: s.addOptimisticSession,
       replaceSessionId: s.replaceSessionId,
       setSessionSummary: s.setSessionSummary,
+      setSessionPinnedAt: s.setSessionPinnedAt,
+      setSessionSnoozedUntil: s.setSessionSnoozedUntil,
       setDeleteError: s.setDeleteError,
     })),
   );

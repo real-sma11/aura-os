@@ -57,6 +57,7 @@ export function useScrollAnchorV2(
   const userUnpinnedAtRef = useRef(0);
   const lastTouchYRef = useRef<number | null>(null);
   const lastScrollTopRef = useRef(0);
+  const lastMaxScrollTopRef = useRef(0);
   const [isAutoFollowing, setIsAutoFollowing] = useState(true);
 
   const syncFollowState = useCallback(() => {
@@ -73,11 +74,13 @@ export function useScrollAnchorV2(
       // event measures its upward delta against the true bottom rather than a
       // stale value (e.g. the initial 0).
       lastScrollTopRef.current = el.scrollTop;
+      lastMaxScrollTopRef.current = Math.max(0, el.scrollHeight - el.clientHeight);
       return;
     }
     guardRef.current = true;
     el.scrollTop = el.scrollHeight;
     lastScrollTopRef.current = el.scrollTop;
+    lastMaxScrollTopRef.current = Math.max(0, el.scrollHeight - el.clientHeight);
     requestAnimationFrame(() => {
       guardRef.current = false;
     });
@@ -87,6 +90,9 @@ export function useScrollAnchorV2(
     pinnedRef.current = true;
     userUnpinnedAtRef.current = 0;
     lastScrollTopRef.current = ref.current?.scrollTop ?? 0;
+    lastMaxScrollTopRef.current = ref.current
+      ? Math.max(0, ref.current.scrollHeight - ref.current.clientHeight)
+      : 0;
     syncFollowState();
     if (scrollToBottomOnReset) {
       guardedScrollToBottom();
@@ -110,37 +116,43 @@ export function useScrollAnchorV2(
       // Our own scrollToBottom write. Keep the baseline current so the next
       // genuine scroll event measures its delta against the right position.
       lastScrollTopRef.current = el.scrollTop;
+      lastMaxScrollTopRef.current = Math.max(0, el.scrollHeight - el.clientHeight);
       return;
     }
 
-    // Any upward movement of scrollTop is deliberate user intent (scrollbar
-    // drag, track click, middle-click autoscroll, etc.). The unguarded pin
-    // writes — ChatMessageList's tail-pin layout effect and useImageScrollPin
-    // — only ever push scrollTop *down* toward the bottom, so a real decrease
-    // here can only come from the user. Funnel it into the same unpin path as
-    // wheel/touch/keyboard so streaming flushes stop fighting the drag.
+    // An upward scrollTop movement can be user intent (scrollbar drag, track
+    // click, middle-click autoscroll), but it can also be a browser clamp when
+    // virtualized rows shrink or the viewport grows. Compare the movement to
+    // the change in the element's maximum valid scrollTop so geometry-only
+    // corrections do not silently disable follow while a response streams.
+    // Any upward movement beyond that clamp allowance is still genuine intent
+    // and follows the same sticky unpin path as wheel/touch/keyboard.
+    const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
     const upwardDelta = lastScrollTopRef.current - el.scrollTop;
+    const maxScrollTopDecrease = Math.max(
+      0,
+      lastMaxScrollTopRef.current - maxScrollTop,
+    );
+    const userDrivenUpwardDelta = upwardDelta - maxScrollTopDecrease;
     lastScrollTopRef.current = el.scrollTop;
-    if (upwardDelta > UPWARD_INTENT_EPSILON_PX && userUnpinnedAtRef.current === 0) {
+    lastMaxScrollTopRef.current = maxScrollTop;
+    if (
+      userDrivenUpwardDelta > UPWARD_INTENT_EPSILON_PX &&
+      userUnpinnedAtRef.current === 0
+    ) {
       markUserUnpinned();
       return;
     }
 
     const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
 
-    // Once the user has shown explicit upward intent, stay unpinned until
-    // they truly return to the very bottom. The ENTER_FOLLOW_THRESHOLD_PX
-    // band exists for users who haven't shown intent — applying it here
-    // would let a sub-180px wheel-up be undone on the very next scroll
-    // event, fighting the user every time they try to read older content.
+    // Once the user has shown explicit upward intent, keep auto-follow off
+    // for the remainder of this posting session. Merely reaching the bottom
+    // again must not silently re-arm it: a late token/layout flush could do
+    // that on the user's behalf and resume fighting their reading position.
+    // The next send (or an explicit jump-to-bottom click) calls
+    // `scrollToBottom`, which starts a fresh follow session.
     if (userUnpinnedAtRef.current > 0) {
-      if (distFromBottom <= 1) {
-        userUnpinnedAtRef.current = 0;
-        if (!pinnedRef.current) {
-          pinnedRef.current = true;
-          syncFollowState();
-        }
-      }
       return;
     }
 
