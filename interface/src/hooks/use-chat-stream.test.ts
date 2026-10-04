@@ -1,10 +1,15 @@
 import { renderHook, act } from "@testing-library/react";
 import { useChatStream } from "./use-chat-stream";
-import { useStreamStore, streamMetaMap } from "./stream/store";
+import {
+  keyForProjectSession,
+  useStreamStore,
+  streamMetaMap,
+} from "./stream/store";
 import { useChatUIStore } from "../stores/chat-ui-store";
 import { useSessionsListStore } from "../stores/sessions-list-store";
 import { STYLE_LOCK_SUFFIX } from "../constants/generation";
 import { EventType, type AuraEvent } from "../shared/types/aura-events";
+import { ApiClientError } from "../shared/api/core";
 
 const mockSetStreamingAgentInstanceId = vi.fn();
 const mockSetAgentStreaming = vi.fn();
@@ -127,8 +132,26 @@ describe("useChatStream", () => {
       result.current.stopStreaming();
     });
 
-    expect(api.cancelInstanceTurn).toHaveBeenCalledWith("p-1", "ai-1");
+    expect(api.cancelInstanceTurn).toHaveBeenCalledWith("p-1", "ai-1", null);
     expect(api.cancelInstanceTurn).toHaveBeenCalledTimes(1);
+  });
+
+  it("scopes Stop to the canonical session opened on this client", () => {
+    const { result } = renderHook(() =>
+      useChatStream({
+        projectId: "p-1",
+        agentInstanceId: "ai-1",
+        sessionId: "session-from-desktop",
+      }),
+    );
+
+    act(() => result.current.stopStreaming());
+
+    expect(api.cancelInstanceTurn).toHaveBeenCalledWith(
+      "p-1",
+      "ai-1",
+      "session-from-desktop",
+    );
   });
 
   // Companion to the test above: the cancel POST is fire-and-forget,
@@ -189,6 +212,78 @@ describe("useChatStream", () => {
     const entry = useStreamStore.getState().entries[result.current.streamKey];
     expect(entry.events[0].role).toBe("user");
     expect(entry.events[0].content).toBe("hello");
+  });
+
+  it("clears sending state only after the server accepts the project command", async () => {
+    vi.mocked(api.sendEventStream).mockImplementation(
+      async (_projectId, _instanceId, _content, _action, _model, _attachments, handler) => {
+        handler?.onAccepted?.({
+          commandId: "command-project-1",
+          sessionId: "session-1",
+          projectId: "p-1",
+          attachId: "attach-1",
+          replayed: false,
+        });
+      },
+    );
+    const { result } = renderHook(() =>
+      useChatStream({ projectId: "p-1", agentInstanceId: "ai-1" }),
+    );
+
+    await act(async () => {
+      await result.current.sendMessage(
+        "hello",
+        null,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        "command-project-1",
+      );
+    });
+
+    const event = useStreamStore.getState().entries[
+      keyForProjectSession("p-1", "ai-1", "session-1")
+    ].events[0];
+    expect(event.deliveryStatus).toBeUndefined();
+  });
+
+  it("marks a project command not sent when no acceptance receipt arrives", async () => {
+    const { result } = renderHook(() =>
+      useChatStream({ projectId: "p-1", agentInstanceId: "ai-1" }),
+    );
+
+    await act(async () => {
+      await result.current.sendMessage("hello");
+    });
+
+    const event = useStreamStore.getState().entries[result.current.streamKey].events[0];
+    expect(event.deliveryStatus).toBe("failed");
+  });
+
+  it("preserves the retrying state after a transient transport rejection", async () => {
+    vi.mocked(api.sendEventStream).mockImplementationOnce(
+      async (_projectId, _instanceId, _content, _action, _model, _attachments, handler) => {
+        handler?.onError?.(new ApiClientError(503, {
+          error: "temporarily unavailable",
+          code: "unavailable",
+          details: null,
+        }));
+      },
+    );
+    const { result } = renderHook(() =>
+      useChatStream({ projectId: "p-1", agentInstanceId: "ai-1" }),
+    );
+
+    await act(async () => {
+      await result.current.sendMessage("hello");
+    });
+
+    const event = useStreamStore.getState().entries[result.current.streamKey].events[0];
+    expect(event.deliveryStatus).toBe("retrying");
   });
 
   it("promotes a queued prompt without changing its transcript identity", async () => {
@@ -660,6 +755,7 @@ describe("useChatStream", () => {
       undefined,
       // 16th positional `safeWorkspace` remains opt-in.
       false,
+      expect.any(String),
     );
     expect(api.sendEventStream).toHaveBeenNthCalledWith(
       2,
@@ -679,6 +775,7 @@ describe("useChatStream", () => {
       undefined,
       undefined,
       false,
+      expect.any(String),
     );
   });
 
@@ -883,6 +980,7 @@ describe("useChatStream", () => {
       undefined,
       undefined,
       false,
+      expect.any(String),
     );
   });
 
@@ -941,6 +1039,7 @@ describe("useChatStream", () => {
       undefined,
       undefined,
       false,
+      expect.any(String),
     );
   });
 

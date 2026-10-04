@@ -4,6 +4,8 @@ export const NotificationKind = {
   TaskRetrying: "task_retrying",
   LoopEnded: "loop_ended",
   ProjectPushStuck: "project_push_stuck",
+  ApprovalRequired: "approval_required",
+  UserInputRequired: "user_input_required",
 } as const;
 
 export type NotificationKind =
@@ -22,6 +24,9 @@ export interface AuraNotification {
   createdAt: number;
   taskId?: string;
   projectId?: string;
+  agentId?: string;
+  agentInstanceId?: string;
+  sessionId?: string;
   route?: string;
 }
 
@@ -43,6 +48,8 @@ export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
   [NotificationKind.TaskRetrying]: "Task retries",
   [NotificationKind.LoopEnded]: "Loop endings",
   [NotificationKind.ProjectPushStuck]: "Push needs attention",
+  [NotificationKind.ApprovalRequired]: "Agent approvals",
+  [NotificationKind.UserInputRequired]: "Agent questions",
 };
 
 export function defaultNotificationPreferences(): NotificationPreferences {
@@ -59,6 +66,8 @@ export function defaultNotificationPreferences(): NotificationPreferences {
       [NotificationKind.TaskRetrying]: false,
       [NotificationKind.LoopEnded]: true,
       [NotificationKind.ProjectPushStuck]: true,
+      [NotificationKind.ApprovalRequired]: true,
+      [NotificationKind.UserInputRequired]: true,
     },
   };
 }

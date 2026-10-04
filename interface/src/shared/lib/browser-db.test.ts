@@ -40,6 +40,7 @@ import {
   BROWSER_DB_STORES,
   browserDbGet,
   browserDbSet,
+  browserDbSetDurable,
   purgeLegacyChatHistoryFallback,
 } from "./browser-db";
 
@@ -66,6 +67,24 @@ describe("browserDbSet", () => {
     expect(touched).toBe(false);
   });
 
+  it("does NOT mirror pending chat commands to localStorage", async () => {
+    await browserDbSet(BROWSER_DB_STORES.chatCommandOutbox, "pending", [
+      { commandId: "private-prompt", content: "secret" },
+    ]);
+    expect(
+      window.localStorage.getItem("aura-idb:chatCommandOutbox:pending"),
+    ).toBeNull();
+  });
+
+  it("does NOT mirror queued follow-up prompts to localStorage", async () => {
+    await browserDbSet(BROWSER_DB_STORES.chatFollowUpQueue, "pending", [
+      { id: "private-follow-up", content: "secret" },
+    ]);
+    expect(
+      window.localStorage.getItem("aura-idb:chatFollowUpQueue:pending"),
+    ).toBeNull();
+  });
+
   it("still mirrors small fallback stores (auth, org, ui, ...) to localStorage", async () => {
     await browserDbSet(BROWSER_DB_STORES.ui, "panel", { open: true });
     const raw = window.localStorage.getItem("aura-idb:ui:panel");
@@ -87,6 +106,19 @@ describe("browserDbSet", () => {
     } finally {
       setItem.mockRestore();
     }
+  });
+});
+
+describe("browserDbSetDurable", () => {
+  it("rejects instead of pretending an outbox write succeeded without IndexedDB", async () => {
+    await expect(
+      browserDbSetDurable(BROWSER_DB_STORES.chatCommandOutbox, "pending", [
+        { commandId: "must-survive", content: "keep me" },
+      ]),
+    ).rejects.toThrow("Durable browser storage is unavailable");
+    expect(
+      window.localStorage.getItem("aura-idb:chatCommandOutbox:pending"),
+    ).toBeNull();
   });
 });
 

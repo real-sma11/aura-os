@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Text } from "@cypher-asi/zui";
-import { ChevronDown, ChevronRight, Loader2, Search, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, MessageSquare, Plus, Search, X } from "lucide-react";
 import { api } from "../../api/client";
 import { PanelSearch } from "../../components/PanelSearch";
 import { useSidebarSearch } from "../../hooks/use-sidebar-search";
@@ -43,19 +43,6 @@ function sortProjects(projects: Project[]): Project[] {
   });
 }
 
-function areSameProjects(left: Project[] | undefined, right: Project[]): boolean {
-  if (!left || left.length !== right.length) {
-    return false;
-  }
-
-  return left.every((project, index) => {
-    const nextProject = right[index];
-    return project.project_id === nextProject.project_id
-      && project.name === nextProject.name
-      && project.updated_at === nextProject.updated_at;
-  });
-}
-
 function ProjectRow({
   project,
   isActive,
@@ -83,6 +70,7 @@ function ProjectRow({
 export function ProjectNavigationDrawerContent() {
   const { query, setQuery } = useSidebarSearch("projects");
   const projects = useProjectsListStore((state) => state.projects);
+  const openNewProjectModal = useProjectsListStore((state) => state.openNewProjectModal);
   const orgs = useOrgStore((state) => state.orgs);
   const activeOrg = useOrgStore((state) => state.activeOrg);
   const switchOrg = useOrgStore((state) => state.switchOrg);
@@ -93,8 +81,7 @@ export function ProjectNavigationDrawerContent() {
   const closeDrawers = useMobileDrawerStore((s) => s.closeDrawers);
   const currentProjectId = getProjectIdFromPathname(location.pathname);
   const mobileDestination = getMobileProjectDestination(location.pathname);
-  const [projectsByOrgId, setProjectsByOrgId] = useState<Record<string, Project[]>>({});
-  const [loadingOrgIds, setLoadingOrgIds] = useState<Record<string, boolean>>({});
+  const [fetchedProjectsByOrgId, setProjectsByOrgId] = useState<Record<string, Project[]>>({});
   const [failedOrgIds, setFailedOrgIds] = useState<Record<string, boolean>>({});
   const [collapsedOrgIds, setCollapsedOrgIds] = useState<Set<string>>(() => new Set());
   const [searchOpen, setSearchOpen] = useState(false);
@@ -121,28 +108,20 @@ export function ProjectNavigationDrawerContent() {
     });
   }, [activeOrg?.name, activeOrg?.org_id, orgs, projects]);
 
-  useEffect(() => {
-    if (projects.length === 0) return;
+  const projectsByOrgId = useMemo(() => {
     const grouped = projects.reduce<Record<string, Project[]>>((acc, project) => {
-      acc[project.org_id] = [...(acc[project.org_id] ?? []), project];
+      (acc[project.org_id] ??= []).push(project);
       return acc;
     }, {});
-
-    setProjectsByOrgId((previous) => {
-      let changed = false;
-      const next = { ...previous };
-      for (const [orgId, orgProjects] of Object.entries(grouped)) {
-        const sortedProjects = sortProjects(orgProjects);
-        if (!areSameProjects(previous[orgId], sortedProjects)) {
-          next[orgId] = sortedProjects;
-          changed = true;
-        }
-      }
-      return changed ? next : previous;
-    });
-  }, [projects]);
+    const result = { ...fetchedProjectsByOrgId };
+    for (const [orgId, orgProjects] of Object.entries(grouped)) {
+      result[orgId] = sortProjects(orgProjects);
+    }
+    return result;
+  }, [fetchedProjectsByOrgId, projects]);
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
       mountedRef.current = false;
     };
@@ -169,7 +148,6 @@ export function ProjectNavigationDrawerContent() {
       }
 
       requestedOrgIdsRef.current.add(org.org_id);
-      setLoadingOrgIds((previous) => ({ ...previous, [org.org_id]: true }));
       void api.listProjects(org.org_id)
         .then((orgProjects) => {
           if (!mountedRef.current) return;
@@ -188,10 +166,6 @@ export function ProjectNavigationDrawerContent() {
           if (!mountedRef.current) return;
           console.error(`Failed to load projects for org ${org.org_id}`, error);
           setFailedOrgIds((previous) => ({ ...previous, [org.org_id]: true }));
-        })
-        .finally(() => {
-          if (!mountedRef.current) return;
-          setLoadingOrgIds((previous) => ({ ...previous, [org.org_id]: false }));
         });
     }
   }, [failedOrgIds, orgSummaries, projectsByOrgId]);
@@ -218,13 +192,13 @@ export function ProjectNavigationDrawerContent() {
           org,
           projects: visibleProjects,
           totalProjects: orgProjects.length,
-          isLoading: loadingOrgIds[org.org_id] === true,
+          isLoading: !projectsByOrgId[org.org_id] && !failedOrgIds[org.org_id],
           didFail: failedOrgIds[org.org_id] === true,
           shouldShow: normalizedQuery.length === 0 || orgMatches || visibleProjects.length > 0,
         };
       })
       .filter((section) => section.shouldShow);
-  }, [failedOrgIds, loadingOrgIds, normalizedQuery, orgSummaries, projectsByOrgId]);
+  }, [failedOrgIds, normalizedQuery, orgSummaries, projectsByOrgId]);
   const cypherSection = useMemo(
     () => sections.find((section) => /cypher/i.test(section.org.name)) ?? null,
     [sections],
@@ -238,6 +212,13 @@ export function ProjectNavigationDrawerContent() {
     navigate(path);
     closeDrawers();
   }, [closeDrawers, navigate]);
+
+  const openProjectCreator = useCallback(() => {
+    closePreview();
+    openNewProjectModal();
+    navigate("/projects");
+    closeDrawers();
+  }, [closeDrawers, closePreview, navigate, openNewProjectModal]);
 
   const destinationPathForProject = useCallback((projectId: string) => {
     if (mobileDestination === "tasks") {
@@ -357,6 +338,20 @@ export function ProjectNavigationDrawerContent() {
           AURA
         </div>
       </div>
+      <nav className={styles.mobileChatNavigation} aria-label="Main navigation">
+        <button
+          type="button"
+          className={`${styles.mobileProjectDrawerRow} ${location.pathname === "/chat" ? styles.mobileProjectDrawerRowActive : ""}`}
+          aria-current={location.pathname === "/chat" ? "page" : undefined}
+          onClick={() => {
+            closePreview();
+            runDrawerNavigation("/chat");
+          }}
+        >
+          <MessageSquare size={18} aria-hidden="true" />
+          <span>Chat</span>
+        </button>
+      </nav>
       <div className={styles.mobileDrawerSearch}>
         <div className={styles.mobileDrawerHeaderBar}>
           <div>
@@ -364,14 +359,25 @@ export function ProjectNavigationDrawerContent() {
               {currentProject?.name ?? "Projects"}
             </div>
           </div>
-          <button
-            type="button"
-            className={styles.mobileDrawerIconButton}
-            aria-label={searchOpen ? "Close project search" : "Search projects"}
-            onClick={searchOpen ? closeSearch : () => setSearchOpen(true)}
-          >
-            {searchOpen ? <X size={18} /> : <Search size={18} />}
-          </button>
+          <div className={styles.mobileDrawerHeaderActions}>
+            <button
+              type="button"
+              className={styles.mobileDrawerIconButton}
+              aria-label="New Project"
+              title="New Project"
+              onClick={openProjectCreator}
+            >
+              <Plus size={18} />
+            </button>
+            <button
+              type="button"
+              className={styles.mobileDrawerIconButton}
+              aria-label={searchOpen ? "Close project search" : "Search projects"}
+              onClick={searchOpen ? closeSearch : () => setSearchOpen(true)}
+            >
+              {searchOpen ? <X size={18} /> : <Search size={18} />}
+            </button>
+          </div>
         </div>
         {searchOpen ? (
           <PanelSearch

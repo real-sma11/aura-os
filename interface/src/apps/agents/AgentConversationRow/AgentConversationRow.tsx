@@ -1,5 +1,5 @@
 import { memo, useEffect } from "react";
-import { Pin } from "lucide-react";
+import { Activity, CircleHelp, Pin, ShieldAlert } from "lucide-react";
 import { formatChatTime } from "../../../shared/utils/format";
 import { stripEmojis } from "../../../shared/utils/text-normalize";
 import type { Agent } from "../../../shared/types";
@@ -29,7 +29,6 @@ function stripMarkdown(text: string): string {
 interface AgentConversationRowProps {
   agent: Agent;
   lastMessage: DisplaySessionEvent | undefined;
-  showMetadataOnly?: boolean;
   isSelected: boolean;
   /** Pre-resolved presentation state from the list-level batched model. */
   status?: string;
@@ -37,6 +36,17 @@ interface AgentConversationRowProps {
   busy?: boolean;
   loopActivity?: LoopActivityPayload | null;
   isPinned?: boolean;
+  attention?: {
+    kind: "approval" | "input";
+    count: number;
+    label: string;
+    route?: string;
+  };
+  activeRun?: {
+    route?: string;
+    activity?: string;
+    activeSubagentCount?: number;
+  };
   onClick: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
   onMouseEnter: () => void;
@@ -45,13 +55,14 @@ interface AgentConversationRowProps {
 function AgentConversationRowBase({
   agent,
   lastMessage,
-  showMetadataOnly = false,
   isSelected,
   status,
   isLocal = false,
   busy = false,
   loopActivity = null,
   isPinned = false,
+  attention,
+  activeRun,
   onClick,
   onContextMenu,
   onMouseEnter,
@@ -63,9 +74,13 @@ function AgentConversationRowBase({
     ? `${lastMessage.role === "user" ? "You: " : ""}${stripMarkdown(stripEmojis(lastMessage.content)).trim()}`
     : "";
   const fallback = agentRole || "Open this agent";
-  const preview = showMetadataOnly
-    ? agentDescription || fallback
-    : messagePreview || agentDescription || fallback;
+  const preview = attention
+    ? `${attention.count > 1 ? `${attention.count} requests` : attention.kind === "input" ? "Answer needed" : "Approval needed"} · ${attention.label}`
+    : activeRun
+      ? activeRun.activeSubagentCount
+        ? `${activeRun.activeSubagentCount} child ${activeRun.activeSubagentCount === 1 ? "agent" : "agents"} active · Tap to follow`
+        : `${activeRun.activity ?? "Agent is working"} · Tap to follow`
+      : messagePreview || agentDescription || fallback;
   const isCeo = isSuperAgent(agent);
 
   // Defer the avatar image to the frame after the row paints so the heavy
@@ -88,6 +103,8 @@ function AgentConversationRowBase({
       data-agent-agent-name={displayName}
       data-agent-agent-role={agent.role}
       data-agent-selected={isSelected ? "true" : "false"}
+      data-agent-attention={attention?.kind ?? "none"}
+      data-agent-activity={activeRun ? "running" : "idle"}
     >
       <Avatar
         avatarUrl={avatarUrl}
@@ -111,6 +128,23 @@ function AgentConversationRowBase({
             {isPinned && !isCeo && (
               <Pin size={11} className={styles.pinIcon} />
             )}
+            {attention ? (
+              <span className={styles.attentionBadge}>
+                {attention.kind === "input" ? (
+                  <CircleHelp size={11} aria-hidden="true" />
+                ) : (
+                  <ShieldAlert size={11} aria-hidden="true" />
+                )}
+                Needs you
+              </span>
+            ) : activeRun ? (
+              <span className={styles.activityBadge}>
+                <Activity size={11} aria-hidden="true" />
+                {activeRun.activeSubagentCount
+                  ? `${activeRun.activeSubagentCount + 1} agents working`
+                  : "Working"}
+              </span>
+            ) : null}
           </span>
           <span className={styles.time}>
             <LoopProgressView
@@ -121,7 +155,15 @@ function AgentConversationRowBase({
             {formatChatTime(agent.updated_at)}
           </span>
         </span>
-        <span className={styles.preview}>{preview}</span>
+        <span
+          className={attention
+            ? styles.attentionPreview
+            : activeRun
+              ? styles.activityPreview
+              : styles.preview}
+        >
+          {preview}
+        </span>
       </span>
     </button>
   );

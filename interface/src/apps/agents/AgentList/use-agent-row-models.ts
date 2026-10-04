@@ -13,6 +13,7 @@ import { useProjectsListStore } from "../../../stores/projects-list-store";
 import { useSidekickStore } from "../../../stores/sidekick-store";
 import { useStreamStore } from "../../../hooks/stream/store";
 import { useAgentStore } from "../stores";
+import { useAgentAttentionStore } from "../../../stores/agent-attention-store";
 import { isLoopActivityActive, type LoopActivityPayload } from "../../../shared/types/aura-events";
 import type { Agent } from "../../../shared/types";
 import type { DisplaySessionEvent } from "../../../shared/types/stream";
@@ -28,10 +29,21 @@ export interface AgentRowModel {
   loopActivity: LoopActivityPayload | null;
   lastMessage?: DisplaySessionEvent;
   isPinned: boolean;
+  attention?: {
+    kind: "approval" | "input";
+    count: number;
+    label: string;
+    route?: string;
+  };
+  activeRun?: {
+    route?: string;
+    activity?: string;
+    activeSubagentCount?: number;
+  };
 }
 
 interface UseAgentRowModelsOptions {
-  /** When false (mobile library), previews are skipped entirely. */
+  /** When false, conversation previews are skipped entirely. */
   includePreview: boolean;
 }
 
@@ -76,6 +88,9 @@ export function useAgentRowModels(
   );
   const streamingAgentInstanceIds = useSidekickStore((s) => s.streamingAgentInstanceIds);
   const instanceIdsByTemplateId = useProjectsListStore((s) => s.instanceIdsByTemplateId);
+  const pendingApprovals = useAgentAttentionStore((s) => s.pendingApprovals);
+  const pendingInputs = useAgentAttentionStore((s) => s.pendingInputs);
+  const activeRuns = useAgentAttentionStore((s) => s.activeRuns);
 
   // One pass over the (small) live-loop map groups rows by template agent id so
   // per-agent aggregation below is an O(1) lookup instead of an O(loops) scan.
@@ -96,6 +111,75 @@ export function useAgentRowModels(
     [streamingAgentInstanceIds],
   );
 
+  const attentionByAgentId = useMemo(() => {
+    const result = new Map<string, NonNullable<AgentRowModel["attention"]> & { startedAt: number }>();
+    for (const item of Object.values(pendingApprovals)) {
+      if (!item) continue;
+      const existing = result.get(item.agentId);
+      if (!existing) {
+        result.set(item.agentId, {
+          kind: "approval",
+          count: 1,
+          label: item.toolName.replaceAll("_", " "),
+          route: item.route,
+          startedAt: item.startedAt,
+        });
+        continue;
+      }
+      existing.count += 1;
+      if (item.startedAt > existing.startedAt) {
+        existing.label = item.toolName.replaceAll("_", " ");
+        existing.route = item.route;
+        existing.startedAt = item.startedAt;
+      }
+    }
+    for (const item of Object.values(pendingInputs)) {
+      if (!item) continue;
+      const label = item.questions[0]?.header || "Agent question";
+      const existing = result.get(item.agentId);
+      if (!existing) {
+        result.set(item.agentId, {
+          kind: "input",
+          count: 1,
+          label,
+          route: item.route,
+          startedAt: item.startedAt,
+        });
+        continue;
+      }
+      existing.count += 1;
+      if (existing.kind !== "input" || item.startedAt > existing.startedAt) {
+        existing.kind = "input";
+        existing.label = label;
+        existing.route = item.route;
+        existing.startedAt = item.startedAt;
+      }
+    }
+    return result;
+  }, [pendingApprovals, pendingInputs]);
+
+  const activeRunByAgentId = useMemo(() => {
+    const result = new Map<string, {
+      route?: string;
+      startedAt: number;
+      activity?: string;
+      activeSubagentCount?: number;
+    }>();
+    for (const item of Object.values(activeRuns)) {
+      if (!item) continue;
+      const existing = result.get(item.agentId);
+      if (!existing || item.startedAt > existing.startedAt) {
+        result.set(item.agentId, {
+          route: item.route,
+          startedAt: item.startedAt,
+          activity: item.activity,
+          activeSubagentCount: item.activeSubagentCount,
+        });
+      }
+    }
+    return result;
+  }, [activeRuns]);
+
   return useMemo(() => {
     const models = new Map<string, AgentRowModel>();
     for (const agent of agents) {
@@ -111,10 +195,16 @@ export function useAgentRowModels(
       models.set(id, {
         status,
         isLocal,
-        busy: hasActiveLoop || standaloneStreaming || projectStreaming,
+        busy:
+          hasActiveLoop ||
+          standaloneStreaming ||
+          projectStreaming ||
+          activeRunByAgentId.has(id),
         loopActivity,
         lastMessage: includePreview ? previewLastMessages[agentHistoryKey(id)] : undefined,
         isPinned: agent.is_pinned || pinnedAgentIds.has(id),
+        attention: attentionByAgentId.get(id),
+        activeRun: activeRunByAgentId.get(id),
       });
     }
     return models;
@@ -129,5 +219,7 @@ export function useAgentRowModels(
     streamingInstanceIdSet,
     instanceIdsByTemplateId,
     includePreview,
+    attentionByAgentId,
+    activeRunByAgentId,
   ]);
 }

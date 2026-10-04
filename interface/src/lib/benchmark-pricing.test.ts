@@ -98,7 +98,7 @@ describe("benchmark pricing", () => {
     });
 
     expect(pricing.source).toBe("fireworks-pricing");
-    expect(estimatedCostUsd).toBeCloseTo(1.885, 6);
+    expect(estimatedCostUsd).toBeCloseTo(2.024, 6);
   });
 
   it("does not double-charge Google cache-hit input tokens", () => {
@@ -178,10 +178,10 @@ describe("benchmark pricing", () => {
   it("resolves GPT-5.6 aliases and cache-write premiums", () => {
     expect(resolvePricing("gpt-5.6", "openai")).toMatchObject({
       model: "gpt-5.6-sol",
-      input: 5,
-      cacheWrite: 6.25,
-      cacheRead: 0.5,
-      output: 30,
+      input: 4,
+      cacheWrite: 5,
+      cacheRead: 0.4,
+      output: 20,
     });
     expect(resolvePricing("aura-gpt-5-6-terra")).toMatchObject({
       model: "gpt-5.6-terra",
@@ -194,6 +194,20 @@ describe("benchmark pricing", () => {
       input: 0.2,
       cacheWrite: 0.25,
       output: 1.2,
+    });
+  });
+
+  it.each([
+    ["aura-gpt-6-astra", "gpt-6-astra", 10, 1, 50],
+    ["openai/gpt-6-sol", "gpt-6-sol", 2, 0.2, 10],
+    ["aura-gpt-6-luna", "gpt-6-luna", 0.1, 0.01, 0.5],
+  ])("resolves GPT-6 pricing for %s", (modelId, model, input, cacheRead, output) => {
+    expect(resolvePricing(modelId)).toMatchObject({
+      provider: "openai",
+      model,
+      input,
+      cacheRead,
+      output,
     });
   });
 
@@ -224,6 +238,8 @@ describe("benchmark pricing", () => {
   });
 
   it.each([
+    ["aura-grok-4-7", "grok-4.7", 2, 0.5, 6],
+    ["xai/grok-4.7", "grok-4.7", 2, 0.5, 6],
     ["aura-grok-4-6", "grok-4.6", 2, 0.5, 6],
     ["xai/grok-4.6", "grok-4.6", 2, 0.5, 6],
     ["aura-grok-4-5", "grok-4.5", 2, 0.3, 6],
@@ -313,11 +329,11 @@ describe("benchmark pricing", () => {
     },
   );
 
-  it("resolves direct Moonshot Kimi K3 pricing and cache discounts", () => {
+  it("resolves managed Fireworks and direct Moonshot Kimi K3 pricing", () => {
     const pricing = resolvePricing("aura-kimi-k3");
     expect(pricing).toMatchObject({
-      provider: "moonshot",
-      source: "moonshot-pricing",
+      provider: "fireworks",
+      source: "fireworks-pricing",
       model: "kimi-k3",
       input: 3,
       output: 15,
@@ -337,15 +353,16 @@ describe("benchmark pricing", () => {
   });
 
   it.each([
-    ["aura-deepseek-v4-pro", "deepseek-v4-pro", 1.74, 0.145, 3.48],
-    ["aura-deepseek-v4-flash", "deepseek-v4-flash", 0.14, 0.028, 0.28],
+    ["aura-deepseek-v4-pro", "deepseek-v4-pro", 1.32, 0.044, 3.96],
+    ["aura-deepseek-v4-flash", "deepseek-v4-flash", 0.22, 0.007, 0.66],
     [
-      "accounts/fireworks/models/deepseek-v4-pro",
-      "deepseek-v4-pro",
-      1.74,
-      0.145,
-      3.48,
+      "accounts/fireworks/models/deepseek-v4-pro-0813",
+      "deepseek-v4-pro-0813",
+      1.32,
+      0.044,
+      3.96,
     ],
+    ["aura-kimi-k3", "kimi-k3", 3, 0.3, 15],
     ["aura-kimi-k2-5", "kimi-k2p5", 0.6, 0.1, 3],
     ["aura-kimi-k2-6", "kimi-k2p6", 0.95, 0.16, 4],
     ["aura-oss-120b", "gpt-oss-120b", 0.15, 0.015, 0.6],

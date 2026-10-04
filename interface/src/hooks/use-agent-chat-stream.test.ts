@@ -1,7 +1,12 @@
-import { renderHook, act } from "@testing-library/react";
+import { renderHook, act, waitFor } from "@testing-library/react";
 import { useAgentChatStream, _resetAgentChatStreamReplayMap } from "./use-agent-chat-stream";
 import { _resetAllPartitionSendControl } from "./stream/partition-state";
-import { useStreamStore, streamMetaMap } from "./stream/store";
+import {
+  ensureEntry,
+  keyForAgentSession,
+  useStreamStore,
+  streamMetaMap,
+} from "./stream/store";
 import { useChatUIStore } from "../stores/chat-ui-store";
 import { useMessageQueueStore } from "../stores/message-queue-store";
 import { useContextUsageStore } from "../stores/context-usage-store";
@@ -12,9 +17,12 @@ import {
 import { STUCK_THRESHOLD_MS } from "./stream/use-stream-health";
 import { STYLE_LOCK_SUFFIX } from "../constants/generation";
 import { EventType, type AuraEvent } from "../shared/types/aura-events";
+import { useToolApprovalStore } from "../stores/tool-approval-store";
+import { ApiClientError } from "../shared/api/core";
 
 vi.mock("../api/client", () => ({
   api: {
+    streams: { listActiveStreams: vi.fn().mockResolvedValue({ streams: [] }) },
     agents: {
       sendEventStream: vi.fn().mockResolvedValue(undefined),
       cancelTurn: vi.fn().mockResolvedValue(undefined),
@@ -42,12 +50,64 @@ vi.mock("../api/streams", () => ({
 
 import { api } from "../api/client";
 import {
+  attachToStream,
+  selectReattachableChatStream,
   generate3dStream,
   generateImageStream,
   generateVideoStream,
 } from "../api/streams";
 
 describe("useAgentChatStream", () => {
+  it("full replay replaces intermediate boundaries after an agent switch without migrating to the new agent", async () => {
+    vi.useFakeTimers();
+    const active = { attach_id: "same-turn", kind: "chat_turn" as const, scope: { session_id: "assigned-session" }, latest_seq: 8, terminated: false, started_at_ms: 1 };
+    vi.mocked(api.streams.listActiveStreams).mockResolvedValue({ streams: [active] });
+    let originalHandler: import("../api/streams").StreamEventHandler | undefined;
+    let resolveOriginal!: () => void;
+    const boundary = (handler: import("../api/streams").StreamEventHandler) => {
+      handler.onEvent({ type: EventType.TextDelta, content: { text: "Read the file once" } } as AuraEvent);
+      handler.onEvent({ type: EventType.ToolCallSnapshot, content: { id: "read-1", name: "read_file", input: { path: "file.txt" } } } as AuraEvent);
+      handler.onEvent({ type: EventType.ToolResult, content: { id: "read-1", name: "read_file", result: "file contents", is_error: false } } as AuraEvent);
+      handler.onEvent({ type: EventType.AssistantMessageEnd, content: { stop_reason: "tool_use" } } as AuraEvent);
+    };
+    vi.mocked(api.agents.sendEventStream).mockImplementation(async (_id, _c, _action, _model, _attachments, handler) => {
+      originalHandler = handler;
+      handler?.onEvent({ type: EventType.SessionReady, content: { session_id: "assigned-session" } } as AuraEvent);
+      boundary(handler!);
+      await new Promise<void>(resolve => { resolveOriginal = resolve; });
+    });
+    vi.mocked(attachToStream).mockImplementation(async (_id, seq, handler) => {
+      expect(seq).toBe(0);
+      boundary(handler);
+      handler.onEvent({ type: EventType.Progress, content: { stage: "auto_fork", new_session_id: "forked-session" } } as AuraEvent);
+      handler.onEvent({ type: EventType.TextDelta, content: { text: "Finished after recovery" } } as AuraEvent);
+      handler.onEvent({ type: EventType.AssistantMessageEnd, content: { stop_reason: "end_turn" } } as AuraEvent);
+      handler.onEvent({ type: EventType.Done, content: {} } as AuraEvent);
+    });
+    const { result, rerender } = renderHook(({ agentId }) => useAgentChatStream({ agentId }), { initialProps: { agentId: "agent-1" } });
+    act(() => result.current.resetEvents([
+      { id: "old-user", role: "user", content: "Earlier question" },
+      { id: "stream-old-history", role: "assistant", content: "Earlier answer" },
+    ]));
+    await act(async () => { void result.current.sendMessage("Read and summarize"); await Promise.resolve(); });
+    expect(useStreamStore.getState().entries["agent-1:assigned-session"].events.filter(e => e.content === "Read the file once")).toHaveLength(1);
+    rerender({ agentId: "agent-2" });
+    await act(async () => {
+      originalHandler?.onError?.(Object.assign(new Error("connection lost"), { code: "harness_ws_closed" }));
+      resolveOriginal();
+    });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(api.agents.sendEventStream).toHaveBeenCalledTimes(1);
+    expect(attachToStream).toHaveBeenCalledTimes(1);
+    const events = useStreamStore.getState().entries["agent-1:forked-session"].events;
+    expect(events.filter(e => e.content === "Read the file once")).toHaveLength(1);
+    expect(events.flatMap(e => e.toolCalls ?? []).filter(t => t.id === "read-1")).toHaveLength(1);
+    expect(events.some(e => e.id === "stream-old-history")).toBe(true);
+    expect(events.some(e => e.content === "Finished after recovery")).toBe(true);
+    expect(useStreamStore.getState().entries["agent-2:forked-session"]).toBeUndefined();
+    vi.useRealTimers();
+  });
+
   beforeEach(() => {
     streamMetaMap.clear();
     _resetAllPartitionSendControl();
@@ -60,7 +120,11 @@ describe("useAgentChatStream", () => {
       utilPerTokenByStreamKey: {},
       resetPendingByStreamKey: {},
     });
+    useToolApprovalStore.setState({ prompts: {} });
     vi.mocked(api.agents.sendEventStream).mockReset().mockResolvedValue(undefined);
+    vi.mocked(api.streams.listActiveStreams).mockReset().mockResolvedValue({ streams: [] });
+    vi.mocked(attachToStream).mockReset().mockResolvedValue(undefined);
+    vi.mocked(selectReattachableChatStream).mockReset().mockImplementation((streams, sessionId) => streams.find(s => s.scope.session_id === sessionId && !s.terminated) ?? null);
     vi.mocked(generateImageStream).mockReset().mockResolvedValue(undefined);
     vi.mocked(generate3dStream).mockReset().mockResolvedValue(undefined);
     vi.mocked(generateVideoStream).mockReset().mockResolvedValue(undefined);
@@ -77,6 +141,75 @@ describe("useAgentChatStream", () => {
     expect(typeof result.current.resetEvents).toBe("function");
   });
 
+  it("scopes Stop to the canonical standalone session opened on this client", () => {
+    const { result } = renderHook(() =>
+      useAgentChatStream({
+        agentId: "agent-1",
+        sessionId: "session-from-desktop",
+      }),
+    );
+
+    act(() => result.current.stopStreaming());
+
+    expect(api.agents.cancelTurn).toHaveBeenCalledWith(
+      "agent-1",
+      "session-from-desktop",
+    );
+  });
+
+  it("surfaces approval prompts replayed into a standalone agent session", async () => {
+    let approvalHandler: import("../api/streams").StreamEventHandler | undefined;
+    let finishStream!: () => void;
+    vi.mocked(api.agents.sendEventStream).mockImplementation(async (
+      _agentId,
+      _content,
+      _action,
+      _model,
+      _attachments,
+      handler,
+    ) => {
+      approvalHandler = handler;
+      handler?.onEvent({
+        type: EventType.ToolApprovalPrompt,
+        content: {
+          request_id: "approval-standalone",
+          tool_name: "run_command",
+          args: { command: "npm test" },
+          agent_id: "agent-1",
+          remember_options: ["once"],
+        },
+      } as AuraEvent);
+      await new Promise<void>((resolve) => {
+        finishStream = resolve;
+      });
+    });
+    const { result } = renderHook(() =>
+      useAgentChatStream({ agentId: "agent-1", sessionId: "session-1" }),
+    );
+
+    let sendPromise!: Promise<void>;
+    act(() => {
+      sendPromise = result.current.sendMessage("Run the tests");
+    });
+
+    await waitFor(() => {
+      expect(useToolApprovalStore.getState().prompts["agent-1:session-1"])
+        .toMatchObject({ request_id: "approval-standalone", tool_name: "run_command" });
+    });
+
+    act(() => {
+      approvalHandler?.onEvent({
+        type: EventType.ToolApprovalResolved,
+        content: { request_id: "approval-standalone" },
+      } as AuraEvent);
+    });
+    expect(useToolApprovalStore.getState().prompts["agent-1:session-1"]).toBeUndefined();
+    finishStream();
+    await act(async () => {
+      await sendPromise;
+    });
+  });
+
   it("sends a message and creates a user message in the store", async () => {
     const { result } = renderHook(() =>
       useAgentChatStream({ agentId: "agent-1" }),
@@ -91,6 +224,105 @@ describe("useAgentChatStream", () => {
     expect(entry.events.length).toBeGreaterThanOrEqual(1);
     expect(entry.events[0].role).toBe("user");
     expect(entry.events[0].content).toBe("hello");
+  });
+
+  it("keeps the optimistic user message when SessionReady finds a pre-existing idle destination lane", async () => {
+    const destinationKey = keyForAgentSession("agent-1", "assigned-session");
+    ensureEntry(destinationKey);
+
+    vi.mocked(api.agents.sendEventStream).mockImplementation(
+      async (_id, _content, _action, _model, _attachments, handler) => {
+        handler?.onEvent({
+          type: EventType.SessionReady,
+          content: { session_id: "assigned-session" },
+        } as AuraEvent);
+      },
+    );
+
+    const onSessionReady = vi.fn();
+    const { result } = renderHook(() =>
+      useAgentChatStream({ agentId: "agent-1", onSessionReady }),
+    );
+
+    await act(async () => {
+      await result.current.sendMessage("keep this prompt visible");
+    });
+
+    expect(onSessionReady).toHaveBeenCalledWith("assigned-session");
+    expect(useStreamStore.getState().entries[destinationKey].events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "user",
+          content: "keep this prompt visible",
+        }),
+      ]),
+    );
+  });
+
+  it("clears sending state only after the server accepts the command", async () => {
+    vi.mocked(api.agents.sendEventStream).mockImplementation(
+      async (_id, _content, _action, _model, _attachments, handler) => {
+        handler?.onAccepted?.({
+          commandId: "command-agent-1",
+          sessionId: "session-1",
+          projectId: "project-1",
+          attachId: "attach-1",
+          replayed: false,
+        });
+      },
+    );
+    const { result } = renderHook(() => useAgentChatStream({ agentId: "agent-1" }));
+
+    await act(async () => {
+      await result.current.sendMessage(
+        "hello",
+        null,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        "command-agent-1",
+      );
+    });
+
+    const event = useStreamStore.getState().entries[
+      keyForAgentSession("agent-1", "session-1")
+    ].events[0];
+    expect(event.deliveryStatus).toBeUndefined();
+  });
+
+  it("marks a command not sent when no acceptance receipt arrives", async () => {
+    const { result } = renderHook(() => useAgentChatStream({ agentId: "agent-1" }));
+
+    await act(async () => {
+      await result.current.sendMessage("hello");
+    });
+
+    const event = useStreamStore.getState().entries[result.current.streamKey].events[0];
+    expect(event.deliveryStatus).toBe("failed");
+  });
+
+  it("preserves the retrying state after a transient transport rejection", async () => {
+    vi.mocked(api.agents.sendEventStream).mockImplementationOnce(
+      async (_agentId, _content, _action, _model, _attachments, handler) => {
+        handler?.onError?.(new ApiClientError(503, {
+          error: "temporarily unavailable",
+          code: "unavailable",
+          details: null,
+        }));
+      },
+    );
+    const { result } = renderHook(() => useAgentChatStream({ agentId: "agent-1" }));
+
+    await act(async () => {
+      await result.current.sendMessage("hello");
+    });
+
+    const event = useStreamStore.getState().entries[result.current.streamKey].events[0];
+    expect(event.deliveryStatus).toBe("retrying");
   });
 
   it("promotes a queued prompt without changing its transcript identity", async () => {
@@ -170,13 +402,14 @@ describe("useAgentChatStream", () => {
     expect(council?.councilMembers?.[1].status).toBe("completed");
   });
 
-  it("auto-reconnects on a stream_stalled error instead of showing a hard error bubble", async () => {
+  it("does not resubmit a user prompt when its interrupted turn cannot be reattached", async () => {
     vi.useFakeTimers();
     let calls = 0;
     vi.mocked(api.agents.sendEventStream).mockImplementation(
       async (_id, _content, _action, _model, _attachments, handler) => {
         calls += 1;
         if (calls === 1) {
+          handler?.onEvent({ type: EventType.TextDelta, content: { text: "Work already completed" } } as AuraEvent);
           // First turn: the server turn watchdog fires after 180s with
           // no harness events. The `code` is what classifies this as a
           // recoverable drop rather than a hard error.
@@ -216,17 +449,55 @@ describe("useAgentChatStream", () => {
     expect(entry.progressText).toBe("Reconnecting…");
     expect(calls).toBe(1);
 
-    // Backoff elapses -> reattach finds no live stream (no `api.streams`
-    // mock) -> the last send is replayed and now succeeds.
+    // With no active turn, recovery must preserve the failure without another POST.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1000);
     });
 
     entry = useStreamStore.getState().entries[result.current.streamKey];
-    expect(calls).toBe(2);
+    expect(calls).toBe(1);
+    expect(entry.events.some((e) => e.content.includes("Work already completed"))).toBe(true);
+    expect(entry.events.some((e) => e.displayVariant === "streamDropped")).toBe(true);
     // The retry must not duplicate the user's message bubble.
     expect(entry.events.filter((e) => e.role === "user")).toHaveLength(1);
 
+    vi.useRealTimers();
+  });
+
+  it("reattaches the server-assigned session without a second POST", async () => {
+    vi.useFakeTimers();
+    const active = { attach_id: "same-turn", kind: "chat_turn" as const, scope: { session_id: "assigned-session" }, latest_seq: 3, terminated: false, started_at_ms: 1 };
+    vi.mocked(api.streams.listActiveStreams).mockResolvedValue({ streams: [active] });
+    vi.mocked(api.agents.sendEventStream).mockImplementation(async (_id, _content, _action, _model, _attachments, handler) => {
+      handler?.onEvent({ type: EventType.SessionReady, content: { session_id: "assigned-session" } } as AuraEvent);
+      handler?.onError?.(Object.assign(new Error("connection lost"), { code: "harness_ws_closed" }));
+    });
+    vi.mocked(attachToStream).mockImplementation(async (_id, _seq, handler) => {
+      handler.onEvent({ type: EventType.TextDelta, content: { text: "Recovered from the same run" } } as AuraEvent);
+      handler.onEvent({ type: EventType.Done, content: {} } as AuraEvent);
+    });
+    const { result } = renderHook(() => useAgentChatStream({ agentId: "agent-1" }));
+    await act(async () => { await result.current.sendMessage("hello"); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(api.agents.sendEventStream).toHaveBeenCalledTimes(1);
+    expect(attachToStream).toHaveBeenCalledWith("same-turn", 0, expect.anything(), expect.anything(), expect.anything());
+    const entry = useStreamStore.getState().entries["agent-1:assigned-session"];
+    expect(entry.events.filter(e => e.role === "user")).toHaveLength(1);
+    expect(entry.events.some(e => e.content === "Recovered from the same run")).toBe(true);
+    vi.useRealTimers();
+  });
+
+  it("does not replay a persisted prompt when stream discovery fails", async () => {
+    vi.useFakeTimers();
+    vi.mocked(api.streams.listActiveStreams).mockRejectedValue(new Error("temporarily offline"));
+    vi.mocked(api.agents.sendEventStream).mockImplementation(async (_id, _content, _action, _model, _attachments, handler) => {
+      handler?.onError?.(Object.assign(new Error("connection lost"), { code: "harness_ws_closed" }));
+    });
+    const { result } = renderHook(() => useAgentChatStream({ agentId: "agent-1", sessionId: "existing" }));
+    await act(async () => { await result.current.sendMessage("hello"); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
+    expect(api.agents.sendEventStream).toHaveBeenCalledTimes(1);
+    expect(attachToStream).not.toHaveBeenCalled();
     vi.useRealTimers();
   });
 
@@ -627,6 +898,9 @@ describe("useAgentChatStream", () => {
       // Kick off the second send in the same synchronous tick the first
       // is mid-await. Without the latch both pass the streaming guard.
       const secondSend = result.current.sendMessage("hello again");
+      // Durable mobile sends persist to IndexedDB before opening the POST, so
+      // let that microtask boundary complete before releasing the mocked SSE.
+      await Promise.resolve();
       resolveFirstStream?.();
       await Promise.all([firstSend, secondSend]);
     });
@@ -686,6 +960,36 @@ describe("useAgentChatStream", () => {
     expect(queue).toHaveLength(1);
     expect(queue[0].content).toBe("queue me");
     expect(queue[0].pendingDueToStuckStream).toBe(false);
+  });
+
+  it("removes a queued copy only after handing the same id to the command send path", async () => {
+    const { result } = renderHook(() =>
+      useAgentChatStream({ agentId: "agent-1" }),
+    );
+    const key = result.current.streamKey;
+    useMessageQueueStore.getState().enqueue(key, {
+      content: "resume me",
+      action: null,
+    });
+    const queued = useMessageQueueStore.getState().queues[key][0];
+
+    await act(async () => {
+      await result.current.sendMessage(
+        queued.content,
+        queued.action,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        queued.id,
+      );
+    });
+
+    expect(api.agents.sendEventStream).toHaveBeenCalledTimes(1);
+    expect(useMessageQueueStore.getState().queues[key]).toEqual([]);
   });
 
   it("clears the in-flight latch in sync with setIsStreaming(false) from AssistantMessageEnd so a queued dequeue can re-enter immediately", async () => {
@@ -1000,6 +1304,7 @@ describe("useAgentChatStream", () => {
       undefined,
       undefined,
       undefined,
+      expect.any(String),
     );
     expect(api.agents.sendEventStream).toHaveBeenNthCalledWith(
       2,
@@ -1017,6 +1322,7 @@ describe("useAgentChatStream", () => {
       undefined,
       undefined,
       undefined,
+      expect.any(String),
     );
   });
 
@@ -1214,6 +1520,7 @@ describe("useAgentChatStream", () => {
       undefined,
       undefined,
       undefined,
+      expect.any(String),
     );
   });
 
@@ -1264,6 +1571,7 @@ describe("useAgentChatStream", () => {
       undefined,
       undefined,
       undefined,
+      expect.any(String),
     );
   });
 
@@ -1303,6 +1611,7 @@ describe("useAgentChatStream", () => {
       undefined,
       undefined,
       undefined,
+      expect.any(String),
     );
   });
 });

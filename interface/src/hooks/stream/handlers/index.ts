@@ -6,6 +6,7 @@ export {
 } from "./shared";
 export { handleThinkingDelta } from "./thinking";
 export { handleTextDelta } from "./text";
+export { handleStreamReset } from "./reset";
 export {
   handleToolCallStarted,
   handleToolCallSnapshot,
@@ -17,6 +18,7 @@ export {
 } from "./tool";
 export {
   handleEventSaved,
+  resetStreamForReplay,
   handleAssistantTurnBoundary,
   handleStreamError,
   finalizeStream,

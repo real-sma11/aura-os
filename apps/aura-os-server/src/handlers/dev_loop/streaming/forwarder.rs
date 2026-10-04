@@ -1050,6 +1050,11 @@ fn maybe_spawn_dev_loop_persist(
     let session_id = inputs.session_id?;
     let ctx = ChatPersistCtx {
         storage,
+        user_id: inputs
+            .state
+            .validation_cache
+            .get(&jwt)
+            .map(|cached| cached.session.user_id.clone()),
         jwt,
         session_id,
         project_id: inputs.project_id.to_string(),

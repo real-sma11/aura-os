@@ -7,6 +7,7 @@ import { ApiClientError, api } from "../../api/client";
 import { Avatar } from "../../components/Avatar";
 import { AgentEditorModal } from "../../apps/agents/components/AgentEditorModal";
 import { useAuraCapabilities } from "../../hooks/use-aura-capabilities";
+import { filterRuntimeVisibleAgents } from "../../shared/lib/agent-runtime-visibility";
 import { useProjectsList } from "../../apps/projects/useProjectsList";
 import { useProjectsListStore } from "../../stores/projects-list-store";
 import { useOrgStore } from "../../stores/org-store";
@@ -78,7 +79,13 @@ type ProjectAgentSetupViewMode = "create" | "existing";
 export function ProjectAgentSetupView({ mode = "create" }: { mode?: ProjectAgentSetupViewMode }) {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
-  const { isMobileClient } = useAuraCapabilities();
+  const {
+    hasDesktopBridge,
+    isMobileLayout,
+    isNativeApp,
+    remoteOnly,
+    runtimeCapabilitiesResolved = true,
+  } = useAuraCapabilities();
   const { setAgentsByProject } = useProjectsList();
   const { activeOrg, orgsError, orgsLoading } = useOrgStore(
     useShallow((state) => ({
@@ -116,6 +123,19 @@ export function ProjectAgentSetupView({ mode = "create" }: { mode?: ProjectAgent
       return;
     }
 
+    // Native/mobile clients start fail-closed as remote-only until the
+    // connected Aura host answers its capability probe. Waiting here avoids
+    // briefly hiding hosted agents (and showing an incorrect empty state)
+    // while that request is still in flight. Desktop has its own bridge and
+    // does not depend on this probe to know that local execution is present.
+    if (!hasDesktopBridge && !runtimeCapabilitiesResolved) {
+      setLoadingAgents(true);
+      setHasLoadedExistingAgents(false);
+      setAgentsError(null);
+      setAvailableAgents([]);
+      return;
+    }
+
     if (orgsLoading) {
       setLoadingAgents(true);
       setHasLoadedExistingAgents(false);
@@ -144,12 +164,11 @@ export function ProjectAgentSetupView({ mode = "create" }: { mode?: ProjectAgent
         // `activeOrg?.org_id` is passed; we still re-check here as
         // defense-in-depth for the brief window where `activeOrg` is
         // null (first mount) and the list comes back unscoped.
-        const visibleRemoteAgents = agents.filter((agent) => (
+        const visibleAgents = filterRuntimeVisibleAgents(agents, remoteOnly).filter((agent) => (
           agent.org_id === activeOrg?.org_id &&
-          agent.machine_type === "remote" &&
           !assignedAgentIds.has(agent.agent_id)
         ));
-        setAvailableAgents(visibleRemoteAgents);
+        setAvailableAgents(visibleAgents);
         setHasLoadedExistingAgents(true);
       })
       .catch((error) => {
@@ -166,7 +185,17 @@ export function ProjectAgentSetupView({ mode = "create" }: { mode?: ProjectAgent
     return () => {
       cancelled = true;
     };
-  }, [activeOrg?.org_id, assignedAgentIds, mode, orgsError, orgsLoading, projectId]);
+  }, [
+    activeOrg?.org_id,
+    assignedAgentIds,
+    hasDesktopBridge,
+    mode,
+    orgsError,
+    orgsLoading,
+    projectId,
+    remoteOnly,
+    runtimeCapabilitiesResolved,
+  ]);
 
   const finishAttach = useCallback((instance: AgentInstance) => {
     upsertProjectAgent(instance, setAgentsByProject);
@@ -198,12 +227,8 @@ export function ProjectAgentSetupView({ mode = "create" }: { mode?: ProjectAgent
     return null;
   }
 
-  if (!isMobileClient) {
+  if (!isMobileLayout && !isNativeApp) {
     return <Navigate to={projectRootPath(projectId)} replace />;
-  }
-
-  if (mode === "existing" && hasLoadedExistingAgents && !loadingAgents && !agentsError && availableAgents.length === 0) {
-    return <Navigate to={projectAgentCreateRoute(projectId)} replace />;
   }
 
   if (mode === "create") {
@@ -224,7 +249,7 @@ export function ProjectAgentSetupView({ mode = "create" }: { mode?: ProjectAgent
           Add Existing Agent
         </Text>
         <Text size="sm" variant="muted">
-          Attach a shared remote agent that is not already in this project.
+          Attach an available team agent that is not already in this project.
         </Text>
       </header>
 
@@ -241,16 +266,28 @@ export function ProjectAgentSetupView({ mode = "create" }: { mode?: ProjectAgent
               <Avatar avatarUrl={primaryProjectAgent.icon ?? undefined} name={primaryProjectAgent.name} type="agent" size={40} />
               <div className={styles.currentAgentCopy}>
                 <span className={styles.agentName}>{primaryProjectAgent.name}</span>
-                <span className={styles.agentMeta}>{primaryProjectAgent.role || "Remote AURA agent"}</span>
+                <span className={styles.agentMeta}>{primaryProjectAgent.role || "AURA agent"}</span>
               </div>
             </div>
           </div>
         </section>
       ) : null}
 
-      <section className={styles.section}>
+      <section
+        className={styles.section}
+        data-agent-surface="available-agent-list"
+        data-agent-list-state={
+          loadingAgents
+            ? "loading"
+            : agentsError
+              ? "error"
+              : hasLoadedExistingAgents
+                ? "ready"
+                : "idle"
+        }
+      >
         <div className={styles.sectionHeader}>
-          <Text size="sm" weight="medium">Available Remote Agents</Text>
+          <Text size="sm" weight="medium">Available Agents</Text>
           <Text size="xs" variant="muted">Only agents that are not already attached appear here.</Text>
         </div>
         <div className={styles.agentList}>
@@ -259,13 +296,15 @@ export function ProjectAgentSetupView({ mode = "create" }: { mode?: ProjectAgent
               key={agent.agent_id}
               type="button"
               className={styles.agentCard}
+              data-agent-action="attach-existing-agent"
+              data-agent-agent-id={agent.agent_id}
               onClick={() => handleAttachExisting(agent)}
               disabled={Boolean(attachingId)}
             >
               <Avatar avatarUrl={agent.icon ?? undefined} name={agent.name} type="agent" size={44} />
               <span className={styles.agentCardCopy}>
                 <span className={styles.agentName}>{agent.name}</span>
-                <span className={styles.agentMeta}>{agent.role || "Remote AURA agent"}</span>
+                <span className={styles.agentMeta}>{agent.role || "AURA agent"}</span>
               </span>
               <span className={styles.agentCardAction}>
                 {attachingId === agent.agent_id ? "Adding…" : "Add"}
@@ -273,6 +312,14 @@ export function ProjectAgentSetupView({ mode = "create" }: { mode?: ProjectAgent
             </button>
           ))}
         </div>
+        {hasLoadedExistingAgents && !loadingAgents && !agentsError && availableAgents.length === 0 ? (
+          <div>
+            <Text size="sm" variant="muted">No available agents to attach. Create an agent for this project to get started.</Text>
+            <button type="button" className={styles.summaryAction} onClick={() => navigate(projectAgentCreateRoute(projectId))}>
+              Create Agent
+            </button>
+          </div>
+        ) : null}
         {loadingAgents ? (
           <div className={styles.loadingState}>
             <Spinner size="sm" />
@@ -297,6 +344,13 @@ function ProjectAgentCreateSurface({
   finishAttach: (instance: AgentInstance) => void;
 }) {
   const navigate = useNavigate();
+  const {
+    remoteOnly,
+    hostedLocalHarness,
+    hasDesktopBridge,
+    runtimeCapabilitiesResolved = true,
+  } = useAuraCapabilities();
+  const isHosted = hostedLocalHarness && !hasDesktopBridge && !remoteOnly;
   const [editorOpen, setEditorOpen] = useState(true);
   const [pendingCreatedAgent, setPendingCreatedAgent] = useState<Agent | null>(null);
 
@@ -307,24 +361,39 @@ function ProjectAgentCreateSurface({
 
   const handleSaved = useCallback(async (agent: Agent) => {
     setPendingCreatedAgent(agent);
-    await waitForRemoteAgentReady(agent.agent_id);
+    if (agent.machine_type === "remote") {
+      await waitForRemoteAgentReady(agent.agent_id);
+    }
     const instance = await api.createAgentInstance(projectId, agent.agent_id);
     setPendingCreatedAgent(null);
     finishAttach(instance);
   }, [finishAttach, projectId]);
+
+  if (!hasDesktopBridge && !runtimeCapabilitiesResolved) {
+    return (
+      <div className={styles.root} data-agent-setup-scroll-root="true">
+        <div className={styles.loadingState} role="status" aria-live="polite">
+          <Spinner size="sm" />
+          <Text size="sm" variant="muted">Checking the connected agent runtime…</Text>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.root} data-agent-setup-scroll-root="true">
       <header className={styles.header}>
         <Text size="xs" weight="medium" variant="muted" className={styles.flowEyebrow}>
           <Sparkles size={14} aria-hidden="true" />
-          Create remote agent
+          Create agent
         </Text>
         <Text size="lg" weight="medium">
-          Create Remote Agent
+          Create Agent
         </Text>
         <Text size="sm" variant="muted">
-          Create an AURA-managed agent for this project. The new agent will attach here as soon as setup finishes.
+          {isHosted
+            ? "Your agent runs on AURA's hosted server, not on your phone. Once created, it will attach to this project and open in Chat."
+            : "Create an AURA-managed agent for this project. The new agent will attach here as soon as setup finishes."}
         </Text>
       </header>
 
@@ -367,7 +436,7 @@ function ProjectAgentCreateSurface({
         onClose={handleClose}
         onSaved={handleSaved}
         closeOnSave={false}
-        forceRemoteOnlyCreate
+        forceRemoteOnlyCreate={remoteOnly}
         mobilePresentation="inline"
         submitLabelOverride={pendingCreatedAgent ? "Finish Attach" : "Create Agent"}
         showCloseAction={false}

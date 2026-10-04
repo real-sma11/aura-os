@@ -79,11 +79,11 @@ export interface DisplaySessionEvent {
    */
   clientId?: string;
   /**
-   * Client-only delivery state for an optimistic user bubble. Queued
-   * messages live in the transcript immediately, before their turn is
-   * dispatched to the stream transport.
+   * Client-only delivery state for an optimistic user bubble. This keeps
+   * in-turn queueing distinct from durable transport retries and cancellation.
    */
-  deliveryStatus?: "queued";
+  deliveryStatus?: "queued" | "sending" | "retrying" | "unconfirmed" |
+    "executionFailed" | "failed" | "cancelled";
   role: "user" | "assistant" | "system";
   content: string;
   displayVariant?:

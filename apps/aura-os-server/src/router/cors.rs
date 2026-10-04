@@ -1,5 +1,5 @@
-use axum::http::HeaderValue;
-use tower_http::cors::{AllowHeaders, AllowMethods, AllowOrigin, CorsLayer};
+use axum::http::{HeaderName, HeaderValue};
+use tower_http::cors::{AllowHeaders, AllowMethods, AllowOrigin, CorsLayer, ExposeHeaders};
 
 const LOCAL_CORS_HOSTS: &[&str] = &["localhost", "127.0.0.1"];
 
@@ -50,4 +50,59 @@ pub fn build_local_api_cors_layer() -> CorsLayer {
         .allow_credentials(true)
         .allow_methods(AllowMethods::mirror_request())
         .allow_headers(AllowHeaders::mirror_request())
+        .expose_headers(ExposeHeaders::list([
+            HeaderName::from_static("x-aura-chat-persisted"),
+            HeaderName::from_static("x-aura-chat-session-id"),
+            HeaderName::from_static("x-aura-chat-project-id"),
+            HeaderName::from_static("x-aura-chat-command-id"),
+            HeaderName::from_static("x-aura-chat-command-replayed"),
+            HeaderName::from_static("x-aura-chat-execution-status"),
+            HeaderName::from_static("x-aura-attach-id"),
+            HeaderName::from_static("x-aura-desktop-relayed"),
+        ]))
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+        routing::get,
+        Router,
+    };
+    use tower::ServiceExt;
+
+    use super::build_local_api_cors_layer;
+
+    #[tokio::test]
+    async fn capacitor_webview_can_read_chat_execution_status_receipt() {
+        let app = Router::new()
+            .route("/", get(|| async { StatusCode::OK }))
+            .layer(build_local_api_cors_layer());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/")
+                    .header("origin", "capacitor://localhost")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get("access-control-allow-origin")
+                .unwrap(),
+            "capacitor://localhost"
+        );
+        assert!(response
+            .headers()
+            .get("access-control-expose-headers")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .contains("x-aura-chat-execution-status"));
+    }
 }

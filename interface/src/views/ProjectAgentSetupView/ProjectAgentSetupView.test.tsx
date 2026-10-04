@@ -13,6 +13,7 @@ const mockListAgents = vi.fn();
 const mockGetRemoteAgentState = vi.fn();
 const mockSetLastAgent = vi.fn();
 const mockSetLastProject = vi.fn();
+let savedMachineType: "local" | "remote" = "remote";
 
 const mockProjectsState = {
   projects: [
@@ -41,7 +42,7 @@ const mockAgentEditorModal = vi.fn((props: {
     {props.submitLabelOverride ? <div>{props.submitLabelOverride}</div> : null}
     <div>{props.showCloseAction === false ? "Close hidden" : "Close visible"}</div>
     {props.agent ? <div>Retrying {props.agent.agent_id}</div> : null}
-    <button type="button" onClick={() => { void props.onSaved({ agent_id: "agent-9" }).catch(() => {}); }}>
+    <button type="button" onClick={() => { void props.onSaved({ agent_id: "agent-9", machine_type: savedMachineType } as { agent_id: string }).catch(() => {}); }}>
       Trigger shared save
     </button>
     <button type="button" onClick={props.onClose}>
@@ -136,7 +137,8 @@ function LocationStateProbe() {
 describe("ProjectAgentSetupView", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockUseAuraCapabilities.mockReturnValue({ isMobileLayout: true, isMobileClient: true });
+    savedMachineType = "remote";
+    mockUseAuraCapabilities.mockReturnValue({ isMobileLayout: true, isMobileClient: true, remoteOnly: true });
     mockUseProjectActions.mockReturnValue(null);
     mockUseOrgStore.mockReturnValue({
       activeOrg: {
@@ -167,7 +169,7 @@ describe("ProjectAgentSetupView", () => {
       { routerProps: { initialEntries: ["/projects/proj-1/agents/create"] } },
     );
 
-    expect(screen.getAllByText("Create Remote Agent").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Create Agent").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Attach Existing Agent" })).toBeInTheDocument();
     expect(screen.getByText("Create a fresh agent for this project, or attach one your team already shares.")).toBeInTheDocument();
     expect(screen.getByTestId("agent-editor-modal")).toBeInTheDocument();
@@ -178,6 +180,46 @@ describe("ProjectAgentSetupView", () => {
       showCloseAction: false,
     }));
     expect(mockListAgents).not.toHaveBeenCalled();
+  });
+
+  it("waits for host capabilities before choosing the mobile agent runtime", () => {
+    mockUseAuraCapabilities.mockReturnValue({
+      hasDesktopBridge: false,
+      hostedLocalHarness: false,
+      isMobileLayout: true,
+      isNativeApp: true,
+      remoteOnly: true,
+      runtimeCapabilitiesResolved: false,
+    });
+
+    const view = render(
+      <Routes>
+        <Route path="/projects/:projectId/agents/create" element={<ProjectAgentSetupView mode="create" />} />
+      </Routes>,
+      { routerProps: { initialEntries: ["/projects/proj-1/agents/create"] } },
+    );
+
+    expect(screen.getByText("Checking the connected agent runtime…")).toBeInTheDocument();
+    expect(screen.queryByTestId("agent-editor-modal")).not.toBeInTheDocument();
+
+    mockUseAuraCapabilities.mockReturnValue({
+      hasDesktopBridge: false,
+      hostedLocalHarness: true,
+      isMobileLayout: true,
+      isNativeApp: true,
+      remoteOnly: false,
+      runtimeCapabilitiesResolved: true,
+    });
+    view.rerender(
+      <Routes>
+        <Route path="/projects/:projectId/agents/create" element={<ProjectAgentSetupView mode="create" />} />
+      </Routes>,
+    );
+
+    expect(screen.getByTestId("agent-editor-modal")).toBeInTheDocument();
+    expect(mockAgentEditorModal.mock.lastCall?.[0]).toEqual(expect.objectContaining({
+      forceRemoteOnlyCreate: false,
+    }));
   });
 
   it("attaches a newly saved shared-editor agent and navigates to chat with handoff state", async () => {
@@ -200,6 +242,63 @@ describe("ProjectAgentSetupView", () => {
     });
     expect(mockSetLastProject).toHaveBeenCalledWith("proj-1");
     expect(mockSetLastAgent).toHaveBeenCalledWith("proj-1", "agent-inst-9");
+  });
+
+  it("creates and attaches hosted agents without remote provisioning", async () => {
+    savedMachineType = "local";
+    mockUseAuraCapabilities.mockReturnValue({ isMobileLayout: true, isNativeApp: false, remoteOnly: false, hostedLocalHarness: true, hasDesktopBridge: false });
+    render(
+      <Routes>
+        <Route path="/projects/:projectId/agents/create" element={<ProjectAgentSetupView mode="create" />} />
+        <Route path="/projects/:projectId/agents/:agentInstanceId" element={<LocationStateProbe />} />
+      </Routes>,
+      { routerProps: { initialEntries: ["/projects/proj-1/agents/create"] } },
+    );
+    expect(mockAgentEditorModal.mock.lastCall?.[0]).toEqual(expect.objectContaining({ forceRemoteOnlyCreate: false }));
+    expect(screen.getByText(/not on your phone/)).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Trigger shared save" }));
+    expect(await screen.findByText(CREATE_AGENT_CHAT_HANDOFF)).toBeInTheDocument();
+    expect(mockCreateAgentInstance).toHaveBeenCalledWith("proj-1", "agent-9");
+    expect(mockGetRemoteAgentState).not.toHaveBeenCalled();
+  });
+
+  it("attaches hosted agents while excluding other teams and already-attached agents", async () => {
+    mockUseAuraCapabilities.mockReturnValue({ isMobileLayout: true, isNativeApp: false, remoteOnly: false });
+    mockProjectsState.agentsByProject["proj-1"] = [{ agent_id: "already" }];
+    mockListAgents.mockResolvedValue([
+      { agent_id: "agent-9", org_id: "org-1", machine_type: "local", name: "Hosted helper" },
+      { agent_id: "already", org_id: "org-1", machine_type: "local", name: "Already attached" },
+      { agent_id: "foreign", org_id: "org-2", machine_type: "local", name: "Other team" },
+    ]);
+    render(
+      <Routes>
+        <Route path="/projects/:projectId/agents/attach" element={<ProjectAgentSetupView mode="existing" />} />
+        <Route path="/projects/:projectId/agents/:agentInstanceId" element={<LocationStateProbe />} />
+      </Routes>,
+      { routerProps: { initialEntries: ["/projects/proj-1/agents/attach"] } },
+    );
+    const hostedHelper = await screen.findByRole("button", { name: /Hosted helper/ });
+    expect(hostedHelper).toHaveAttribute("data-agent-action", "attach-existing-agent");
+    expect(hostedHelper).toHaveAttribute("data-agent-agent-id", "agent-9");
+    expect(hostedHelper.closest("section")).toHaveAttribute("data-agent-list-state", "ready");
+    await userEvent.setup().click(hostedHelper);
+    expect(await screen.findByText(CREATE_AGENT_CHAT_HANDOFF)).toBeInTheDocument();
+    expect(mockCreateAgentInstance).toHaveBeenCalledWith("proj-1", "agent-9");
+    expect(screen.queryByRole("button", { name: /Other team|Already attached/ })).not.toBeInTheDocument();
+  });
+
+  it("explains an empty attachment list instead of redirecting back to creation", async () => {
+    render(
+      <Routes>
+        <Route path="/projects/:projectId/agents/attach" element={<ProjectAgentSetupView mode="existing" />} />
+        <Route path="/projects/:projectId/agents/create" element={<div>Create fallback</div>} />
+      </Routes>,
+      { routerProps: { initialEntries: ["/projects/proj-1/agents/attach"] } },
+    );
+    expect(await screen.findByText(/No available agents to attach/)).toBeInTheDocument();
+    expect(screen.queryByText("Create fallback")).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Create Agent" }));
+    expect(screen.getByText("Create fallback")).toBeInTheDocument();
   });
 
   it("retries attach against the already-created agent after a post-save failure", async () => {
@@ -343,8 +442,21 @@ describe("ProjectAgentSetupView", () => {
     expect(mockListAgents).not.toHaveBeenCalled();
   });
 
-  it("redirects desktop users back to the project root", () => {
+  it("keeps agent creation available on iPad with a desktop user agent", () => {
     mockUseAuraCapabilities.mockReturnValue({ isMobileLayout: true, isMobileClient: false });
+    render(
+      <Routes>
+        <Route path="/projects/:projectId/agents/create" element={<ProjectAgentSetupView mode="create" />} />
+        <Route path="/projects/:projectId" element={<div>Desktop project root</div>} />
+      </Routes>,
+      { routerProps: { initialEntries: ["/projects/proj-1/agents/create"] } },
+    );
+    expect(screen.queryByText("Desktop project root")).not.toBeInTheDocument();
+    expect(screen.getByTestId("agent-editor-modal")).toBeInTheDocument();
+  });
+
+  it("redirects desktop users back to the project root", () => {
+    mockUseAuraCapabilities.mockReturnValue({ isMobileLayout: false, isMobileClient: false });
 
     render(
       <Routes>

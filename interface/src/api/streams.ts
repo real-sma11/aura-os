@@ -9,6 +9,7 @@ import { EventType, isValidEventType, parseAuraEvent } from "../shared/types/aur
 import { handleEngineEvent } from "../stores/event-store/engine-event-handlers";
 import type { SSECallbacks } from "../shared/api/sse";
 import { streamSSE } from "../shared/api/sse";
+import { activeDesktopEnvironmentId } from "../shared/api/desktop-relay";
 import type { ActiveStreamSummary } from "../shared/api/streams";
 
 export type { ChatAttachment } from "../shared/types/aura-events";
@@ -103,6 +104,51 @@ export interface StreamEventHandler {
   onEvent: (event: AuraEvent) => void;
   onError: (error: unknown) => void;
   onDone?: () => void;
+  onAccepted?: (receipt: ChatCommandReceipt) => void;
+}
+
+export interface ChatCommandReceipt {
+  commandId: string;
+  sessionId: string | null;
+  projectId: string | null;
+  attachId: string | null;
+  replayed: boolean;
+  /** Durable execution result on replay; absent on older Aura servers. */
+  executionStatus?: "attached" | "completed" | "failed" | "unconfirmed";
+}
+
+const CHAT_PERSISTED_HEADER = "x-aura-chat-persisted";
+const CHAT_COMMAND_ID_HEADER = "x-aura-chat-command-id";
+const CHAT_SESSION_ID_HEADER = "x-aura-chat-session-id";
+const CHAT_PROJECT_ID_HEADER = "x-aura-chat-project-id";
+const CHAT_ATTACH_ID_HEADER = "x-aura-attach-id";
+const CHAT_COMMAND_REPLAYED_HEADER = "x-aura-chat-command-replayed";
+const CHAT_EXECUTION_STATUS_HEADER = "x-aura-chat-execution-status";
+
+function commandReceiptCallback(
+  expectedCommandId: string | undefined,
+  handler: StreamEventHandler,
+): ((response: Response) => void) | undefined {
+  if (!expectedCommandId) return undefined;
+  return (response) => {
+    const persisted = response.headers.get(CHAT_PERSISTED_HEADER);
+    const commandId = response.headers.get(CHAT_COMMAND_ID_HEADER);
+    if (persisted !== "true" || commandId !== expectedCommandId) {
+      throw new Error("Aura could not confirm that this message was saved");
+    }
+    const executionStatus = response.headers.get(CHAT_EXECUTION_STATUS_HEADER);
+    handler.onAccepted?.({
+      commandId,
+      sessionId: response.headers.get(CHAT_SESSION_ID_HEADER),
+      projectId: response.headers.get(CHAT_PROJECT_ID_HEADER),
+      attachId: response.headers.get(CHAT_ATTACH_ID_HEADER),
+      replayed: response.headers.get(CHAT_COMMAND_REPLAYED_HEADER) === "true",
+      ...(executionStatus === "attached" || executionStatus === "completed" ||
+      executionStatus === "failed" || executionStatus === "unconfirmed"
+        ? { executionStatus }
+        : {}),
+    });
+  };
 }
 
 /* ── SSE helpers ─────────────────────────────────────────────────── */
@@ -341,8 +387,13 @@ export function sendAgentEventStream(
    * distinct request shape and UI presentation.
    */
   mixture?: MixtureRequest,
+  clientCommandId?: string,
+  isCommandReplay?: boolean,
+  wasPreviouslyAccepted?: boolean,
+  isCommandResume?: boolean,
 ) {
   const body: Record<string, unknown> = { content, action };
+  if (clientCommandId) body.client_command_id = clientCommandId;
   if (model) {
     body.model = model;
     // Reasoning effort is persisted per-model by the picker's effort
@@ -373,6 +424,11 @@ export function sendAgentEventStream(
     // — accepts any positive integer, ignores blanks / non-numeric.
     headers["X-Aura-Client-Retry"] = String(Math.floor(clientRetryAttempt));
   }
+  if (isCommandReplay) headers["X-Aura-Command-Replay"] = "1";
+  if (wasPreviouslyAccepted) headers["X-Aura-Command-Previously-Accepted"] = "1";
+  if (isCommandResume) headers["X-Aura-Command-Resume"] = "1";
+  const desktopEnvironmentId = activeDesktopEnvironmentId();
+  if (desktopEnvironmentId) headers["X-Aura-Desktop-Environment"] = desktopEnvironmentId;
   return streamSSE<string>(
     `${BASE_URL}/api/agents/${agentId}/events/stream`,
     {
@@ -382,6 +438,7 @@ export function sendAgentEventStream(
     },
     createChatStreamHandler(handler),
     signal,
+    { onResponse: commandReceiptCallback(clientCommandId, handler) },
   );
 }
 
@@ -617,8 +674,13 @@ export function sendEventStream(
    * filesystem checkpoint before the turn.
    */
   safeWorkspace?: boolean,
+  clientCommandId?: string,
+  isCommandReplay?: boolean,
+  wasPreviouslyAccepted?: boolean,
+  isCommandResume?: boolean,
 ) {
   const body: Record<string, unknown> = { content, action };
+  if (clientCommandId) body.client_command_id = clientCommandId;
   if (model) {
     body.model = model;
     // See `sendAgentEventStream` — effort is resolved from the persisted
@@ -647,6 +709,11 @@ export function sendEventStream(
   if (typeof clientRetryAttempt === "number" && clientRetryAttempt >= 1) {
     headers["X-Aura-Client-Retry"] = String(Math.floor(clientRetryAttempt));
   }
+  if (isCommandReplay) headers["X-Aura-Command-Replay"] = "1";
+  if (wasPreviouslyAccepted) headers["X-Aura-Command-Previously-Accepted"] = "1";
+  if (isCommandResume) headers["X-Aura-Command-Resume"] = "1";
+  const desktopEnvironmentId = activeDesktopEnvironmentId();
+  if (desktopEnvironmentId) headers["X-Aura-Desktop-Environment"] = desktopEnvironmentId;
   return streamSSE<string>(
     `${BASE_URL}/api/projects/${projectId}/agents/${agentInstanceId}/events/stream`,
     {
@@ -656,5 +723,6 @@ export function sendEventStream(
     },
     createChatStreamHandler(handler),
     signal,
+    { onResponse: commandReceiptCallback(clientCommandId, handler) },
   );
 }

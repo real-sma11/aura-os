@@ -357,6 +357,9 @@ pub fn build_test_app_from_store_with_remote_only(
         data_dir.join("loop_logs"),
     ));
     let channel_service = Arc::new(aura_os_channels::ChannelService::new(store.clone()));
+    let push_notifications = Arc::new(
+        aura_os_server::push_notifications::PushNotificationService::disabled(store.clone()),
+    );
     let state = AppState {
         store,
         data_dir,
@@ -381,6 +384,7 @@ pub fn build_test_app_from_store_with_remote_only(
         live_streams: aura_os_server::live_streams::LiveStreamRegistry::from_env(),
         event_broadcast,
         event_hub,
+        desktop_relays: Arc::new(aura_os_server::desktop_relay::DesktopRelayRegistry::new()),
         loop_registry,
         terminal_manager: Arc::new(aura_os_terminal::TerminalManager::new()),
         browser_manager: Arc::new(aura_os_browser::BrowserManager::new(
@@ -415,6 +419,7 @@ pub fn build_test_app_from_store_with_remote_only(
         public_rate_limiter: aura_os_server::PublicRateLimiter::new(),
         public_demo_agent_id: Arc::new(tokio::sync::OnceCell::new()),
         mixpanel: None,
+        push_notifications,
         channel_service,
         telegram_bot_username: Arc::new(tokio::sync::OnceCell::new()),
     };

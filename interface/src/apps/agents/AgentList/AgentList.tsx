@@ -99,10 +99,9 @@ interface AgentListProps {
 interface AgentRowProps {
   agent: Agent;
   model: AgentRowModel | undefined;
-  isMobileLibrary: boolean;
   isSelected: boolean;
   /** Id-arg callbacks so the list can pass referentially-stable handlers. */
-  onSelect: (agentId: string) => void;
+  onSelect: (agentId: string, attentionRoute?: string) => void;
   onHover: (agentId: string) => void;
   onContextMenu: (e: React.MouseEvent) => void;
 }
@@ -115,26 +114,29 @@ interface AgentRowProps {
 function AgentRow({
   agent,
   model,
-  isMobileLibrary,
   isSelected,
   onSelect,
   onHover,
   onContextMenu,
 }: AgentRowProps) {
-  const handleClick = useCallback(() => onSelect(agent.agent_id), [onSelect, agent.agent_id]);
+  const handleClick = useCallback(
+    () => onSelect(agent.agent_id, model?.attention?.route ?? model?.activeRun?.route),
+    [onSelect, agent.agent_id, model?.attention?.route, model?.activeRun?.route],
+  );
   const handleMouseEnter = useCallback(() => onHover(agent.agent_id), [onHover, agent.agent_id]);
 
   return (
     <AgentConversationRow
       agent={agent}
       lastMessage={model?.lastMessage}
-      showMetadataOnly={isMobileLibrary}
       isSelected={isSelected}
       status={model?.status}
       isLocal={model?.isLocal}
       busy={model?.busy}
       loopActivity={model?.loopActivity ?? null}
       isPinned={model?.isPinned}
+      attention={model?.attention}
+      activeRun={model?.activeRun}
       onClick={handleClick}
       onContextMenu={onContextMenu}
       onMouseEnter={handleMouseEnter}
@@ -261,18 +263,20 @@ export function AgentList({ mode = "default" }: AgentListProps) {
     }
   }, [navigate, shouldOpenMobileCreate]);
 
-  const handleAgentRowClick = useCallback((selectedAgentId: string) => {
+  const handleAgentRowClick = useCallback((selectedAgentId: string, attentionRoute?: string) => {
+    if (attentionRoute) {
+      navigate(attentionRoute);
+      return;
+    }
     if (selectedAgentId === agentId) return;
     // Warm the destination history on click too (not just hover): a direct
     // click — keyboard, touch, or a fast pointer that never fires a hover —
     // would otherwise reach `/agents/:id` with an `idle` history entry and
     // re-arm `ChatPanel`'s cold-load gate. `warmStandaloneAgentHistory` is
     // idempotent, so overlapping with a prior hover prefetch stays cheap.
-    if (!isMobileLibrary) {
-      warmStandaloneAgentHistory(selectedAgentId);
-    }
+    warmStandaloneAgentHistory(selectedAgentId);
     navigate(`/agents/${selectedAgentId}`);
-  }, [agentId, isMobileLibrary, navigate]);
+  }, [agentId, navigate]);
 
   // Pre-warm the chat-history-store entries the standalone chat reads so
   // `ChatPanel`'s cold-load gate (`.messageContentHidden` + the fading
@@ -291,12 +295,12 @@ export function AgentList({ mode = "default" }: AgentListProps) {
   // start so the active chat's history round-trip doesn't contend with
   // preview prefetches for every other agent.
   const prefetchAgentIds = useMemo(() => {
-    if (!isDesktopSidebar) return [];
+    if (!isDesktopSidebar && !isMobileLibrary) return [];
     return agents.map((a) => a.agent_id).filter((id) => id !== agentId);
-  }, [agents, isDesktopSidebar, agentId]);
+  }, [agents, isDesktopSidebar, isMobileLibrary, agentId]);
 
   const activeHistoryResolved = useChatHistoryStore((s) => {
-    if (!isDesktopSidebar || !agentId) return true;
+    if ((!isDesktopSidebar && !isMobileLibrary) || !agentId) return true;
     const entry = s.entries[agentHistoryKey(agentId)];
     return entry?.status === "ready" || entry?.status === "error";
   });
@@ -418,28 +422,64 @@ export function AgentList({ mode = "default" }: AgentListProps) {
     [optimisticDeletedAgentId, sortedAgents],
   );
 
-  const filteredAgents = useMemo(() => {
-    if (!searchQuery) return visibleSortedAgents;
-    const q = searchQuery.toLowerCase();
-    return visibleSortedAgents.filter((a) => {
-      const haystack = `${a.name} ${a.role} ${a.personality} ${a.system_prompt}`.toLowerCase();
-      return haystack.includes(q);
-    });
-  }, [visibleSortedAgents, searchQuery]);
-
   // Resolve every row's live state (avatar status, busy, loop, pin, preview)
   // once at the list level so the rows themselves carry no store
   // subscriptions and stay cheap to (re-)mount on a pane switch.
-  const rowModels = useAgentRowModels(filteredAgents, {
-    includePreview: !isMobileLibrary,
+  const rowModels = useAgentRowModels(visibleSortedAgents, {
+    includePreview: true,
   });
+
+  const filteredAgents = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return visibleSortedAgents;
+    const terms = q.split(/\s+/);
+    return visibleSortedAgents.filter((agent) => {
+      const model = rowModels.get(agent.agent_id);
+      const haystack = [
+        agent.name,
+        agent.role,
+        agent.personality,
+        agent.system_prompt,
+        model?.lastMessage?.content,
+        model?.attention?.label,
+        model?.activeRun ? "working active run" : "",
+      ].filter(Boolean).join(" ").toLowerCase();
+      return terms.every((term) => haystack.includes(term));
+    });
+  }, [rowModels, searchQuery, visibleSortedAgents]);
+
+  // Mobile is an operator surface first: agents blocked on the user should
+  // never be buried below a long library, and live work should be easier to
+  // resume than idle profiles. Preserve the user's normal pinned/recent order
+  // within each tier so this remains a temporary activity projection rather
+  // than a second source of truth for library ordering.
+  const displayedAgents = useMemo(() => {
+    if (!isMobileLibrary) return filteredAgents;
+    return [...filteredAgents].sort((a, b) => {
+      const rank = (model: AgentRowModel | undefined) =>
+        model?.attention ? 0 : model?.activeRun ? 1 : 2;
+      return rank(rowModels.get(a.agent_id)) - rank(rowModels.get(b.agent_id));
+    });
+  }, [filteredAgents, isMobileLibrary, rowModels]);
+
+  const mobileActivity = useMemo(() => {
+    if (!isMobileLibrary) return null;
+    let needsYou = 0;
+    let working = 0;
+    for (const agent of displayedAgents) {
+      const model = rowModels.get(agent.agent_id);
+      if (model?.attention) needsYou += 1;
+      else if (model?.activeRun) working += 1;
+    }
+    return needsYou + working > 0 ? { needsYou, working } : null;
+  }, [displayedAgents, isMobileLibrary, rowModels]);
 
   // Map agents to the shared `LeftMenuTree`'s custom-row variant: the tree
   // owns layout, virtualization, the overlay scrollbar, and the reveal
   // cascade, while each row stays the rich `AgentConversationRow`. Built
   // fresh each render (not memoized) so rows pick up new model values; the
   // memoized row bails unless its own props changed.
-  const entries: LeftMenuEntry[] = filteredAgents.map((agent) => ({
+  const entries: LeftMenuEntry[] = displayedAgents.map((agent) => ({
     kind: "custom",
     id: agent.agent_id,
     estimatedHeight: AGENT_ROW_ESTIMATED_HEIGHT,
@@ -447,7 +487,6 @@ export function AgentList({ mode = "default" }: AgentListProps) {
       <AgentRow
         agent={agent}
         model={rowModels.get(agent.agent_id)}
-        isMobileLibrary={isMobileLibrary}
         isSelected={agent.agent_id === agentId}
         onSelect={handleAgentRowClick}
         onHover={handleHoverPrefetch}
@@ -519,12 +558,35 @@ export function AgentList({ mode = "default" }: AgentListProps) {
         data-agent-surface="agent-list"
         data-agent-mode={mode}
       >
-        <LeftMenuTree
-          ariaLabel="Agents"
-          entries={entries}
-          onContextMenu={handleContextMenu}
-          revealEnabled={isDesktopSidebar}
-        />
+        {mobileActivity ? (
+          <div className={styles.activitySummary} role="status" aria-live="polite">
+            <span className={styles.activitySummaryLabel}>Agent activity</span>
+            <span className={styles.activitySummaryCounts}>
+              {mobileActivity.needsYou > 0 ? (
+                <span className={styles.attentionCount}>
+                  {mobileActivity.needsYou} needs you
+                </span>
+              ) : null}
+              {mobileActivity.working > 0 ? (
+                <span className={styles.workingCount}>
+                  {mobileActivity.working} working
+                </span>
+              ) : null}
+            </span>
+          </div>
+        ) : null}
+        {displayedAgents.length === 0 && searchQuery.trim() ? (
+          <EmptyState>
+            No agents or recent conversations match “{searchQuery.trim()}”.
+          </EmptyState>
+        ) : (
+          <LeftMenuTree
+            ariaLabel="Agents"
+            entries={entries}
+            onContextMenu={handleContextMenu}
+            revealEnabled={isDesktopSidebar}
+          />
+        )}
       </div>
 
       {ctxMenu &&
@@ -571,8 +633,6 @@ export function AgentList({ mode = "default" }: AgentListProps) {
         onSaved={handleAgentSaved}
         closeOnSave={false}
         isTransitioning={!!pendingCreatedAgentId}
-        titleOverride={isMobileLibrary ? "Create Remote Agent" : undefined}
-        submitLabelOverride={isMobileLibrary ? "Create Remote Agent" : undefined}
       />
 
       <AgentEditorModal

@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { resolveApiUrl, subscribeToHostChanges } from "../shared/lib/host-config";
 import { isNativeRuntime } from "../shared/lib/native-runtime";
+import { refreshDesktopRelayEnvironment } from "../shared/api/desktop-relay";
 
 export const AURA_BREAKPOINTS = {
   phoneMax: 680,
@@ -22,6 +23,13 @@ export interface AuraFeatureAvailability {
 
 export interface AuraCapabilities {
   hasDesktopBridge: boolean;
+  /**
+   * True once the connected Aura host has either answered the runtime
+   * capability probe or the probe has failed closed. Native/mobile creation
+   * flows use this to avoid defaulting to a Swarm agent during the short boot
+   * window before a hosted Harness is discovered.
+   */
+  runtimeCapabilitiesResolved: boolean;
   remoteOnly: boolean;
   localAgentRuntimeAvailable: boolean;
   hostedLocalHarness: boolean;
@@ -107,21 +115,47 @@ function requestRuntimeCapabilities(force = false): Promise<void> {
     .then(async (response) => {
       if (!response.ok) {
         runtimeCapabilitiesStatus = "failed";
+        recompute();
         return;
       }
       const data: unknown = await response.json();
       if (!isServerRuntimeCapabilities(data)) {
         runtimeCapabilitiesStatus = "failed";
+        recompute();
         return;
       }
       serverRuntimeCapabilities = data;
       runtimeCapabilitiesStatus = "loaded";
-      scheduleRecompute();
+      // Keep the mobile shell aware of a paired desktop-local runtime. This
+      // is deliberately best-effort: hosted local agents remain available
+      // when no desktop is connected, while local agents can opt into the
+      // stronger desktop execution path when one is present.
+      // The extra discovery request is only useful to phone/native clients;
+      // keeping it out of desktop/web capability probes also avoids making
+      // the core runtime gate depend on an optional rolling-deploy route.
+      if (readCapabilities().isMobileClient) {
+        void refreshDesktopRelayEnvironment();
+      }
+      // Capability responses are infrequent and directly gate actions such as
+      // starting a local agent. Publish them immediately: native WebViews can
+      // defer requestAnimationFrame while restoring or changing activities,
+      // which otherwise leaves consumers on the fail-closed boot snapshot.
+      recompute();
     })
     .catch(() => {
       runtimeCapabilitiesStatus = "failed";
+      recompute();
     });
   return runtimeCapabilitiesRequest;
+}
+
+/**
+ * Force an immediate capability probe after a user asks Aura to retry the
+ * connected runtime. The regular poll remains the background safety net; this
+ * is the explicit recovery path used by read-only mobile agent surfaces.
+ */
+export function refreshAuraRuntimeCapabilities(): Promise<void> {
+  return requestRuntimeCapabilities(true);
 }
 
 function readCapabilities(): AuraCapabilities {
@@ -129,6 +163,7 @@ function readCapabilities(): AuraCapabilities {
     const features = buildFeatureAvailability(false);
     return {
       hasDesktopBridge: false,
+      runtimeCapabilitiesResolved: false,
       remoteOnly: true,
       localAgentRuntimeAvailable: false,
       hostedLocalHarness: false,
@@ -172,6 +207,8 @@ function readCapabilities(): AuraCapabilities {
 
   return {
     hasDesktopBridge,
+    runtimeCapabilitiesResolved:
+      runtimeCapabilitiesStatus === "loaded" || runtimeCapabilitiesStatus === "failed",
     remoteOnly: !localRuntimeAvailable,
     localAgentRuntimeAvailable: localRuntimeAvailable,
     hostedLocalHarness: serverRuntimeCapabilities?.hostedLocalHarness === true,
@@ -204,6 +241,7 @@ function featuresEqual(a: AuraFeatureAvailability, b: AuraFeatureAvailability): 
 function capabilitiesEqual(a: AuraCapabilities, b: AuraCapabilities): boolean {
   return (
     a.hasDesktopBridge === b.hasDesktopBridge &&
+    a.runtimeCapabilitiesResolved === b.runtimeCapabilitiesResolved &&
     a.remoteOnly === b.remoteOnly &&
     a.localAgentRuntimeAvailable === b.localAgentRuntimeAvailable &&
     a.hostedLocalHarness === b.hostedLocalHarness &&

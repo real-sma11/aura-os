@@ -19,6 +19,7 @@ interface MockAuthenticatedAppOptions {
   processes?: Record<string, unknown>[];
   processRuns?: Record<string, Record<string, unknown>[]>;
   orgsUnavailable?: boolean;
+  hostedLocalHarness?: boolean;
   lastAppId?: string | null;
 }
 
@@ -125,6 +126,9 @@ export async function mockAuthenticatedApp(page: Page, options: MockAuthenticate
   const lastAppId = options.lastAppId ?? "projects";
 
   await page.addInitScript(({ seedSession, seedLastAppId }) => {
+    // Phone emulation on localhost must not look like a native WebView.
+    // Native tests explicitly override this after installing the fixture.
+    Object.defineProperty(window, "Capacitor", { configurable: true, value: { isNativePlatform: () => false } });
     try {
       window.localStorage.setItem("aura-jwt", seedSession.access_token);
       window.localStorage.setItem("aura-session", JSON.stringify(seedSession));
@@ -244,7 +248,7 @@ export async function mockAuthenticatedApp(page: Page, options: MockAuthenticate
     };
 
     const agentInstances = options.agentInstances ?? [defaultAgentInstance];
-    const hasLocalAgentRuntime = agentInstances.some(
+    const hasLocalAgentRuntime = options.hostedLocalHarness === true || agentInstances.some(
       (instance) => instance.machine_type === "local",
     );
 
@@ -404,7 +408,8 @@ export async function mockAuthenticatedApp(page: Page, options: MockAuthenticate
       return json({
         remoteOnly: !hasLocalAgentRuntime,
         localAgentRuntimeAvailable: hasLocalAgentRuntime,
-        hostedLocalHarness: false,
+        hostedLocalHarness: options.hostedLocalHarness === true,
+        hostedSafeWorkspace: options.hostedLocalHarness === true,
       });
     }
     if (pathname === "/api/users/me") {
@@ -492,6 +497,8 @@ export async function mockAuthenticatedApp(page: Page, options: MockAuthenticate
       (instance) => allProjects.some((candidate) => pathname === `/api/projects/${candidate.project_id}/agents/${instance.agent_instance_id}/events`),
     );
     if (matchingAgentInstanceEvents) return json([]);
+
+    if (allProjects.some((candidate) => pathname === `/api/projects/${candidate.project_id}/sessions`)) return json([]);
 
     const matchingAgentInstanceSessions = agentInstances.find(
       (instance) => allProjects.some((candidate) => pathname === `/api/projects/${candidate.project_id}/agents/${instance.agent_instance_id}/sessions`),

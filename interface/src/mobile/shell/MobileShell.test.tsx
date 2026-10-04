@@ -61,7 +61,7 @@ const openNewProjectModal = vi.fn();
 // `agent-store.ts` (deep in the shell's import graph) is being loaded —
 // i.e. before this file's top-level statements — so plain consts would
 // still be in their temporal dead zone when the factory reads them.
-const { orgFixtures, switchOrg, createOrg, mockOrgErrors, getMockOrgState } = vi.hoisted(() => {
+const { mockOrgErrors, getMockOrgState } = vi.hoisted(() => {
   const orgFixtures = [
     { org_id: "org-1", name: "Alpha Team", owner_user_id: "u1", billing: null, created_at: "2025-01-01T00:00:00Z", updated_at: "2025-01-01T00:00:00Z" },
     { org_id: "org-2", name: "Beta Team", owner_user_id: "u1", billing: null, created_at: "2025-01-01T00:00:00Z", updated_at: "2025-01-01T00:00:00Z" },
@@ -160,9 +160,11 @@ vi.mock("../../api/client", () => ({
   },
 }));
 
+const mockMobileClient = vi.hoisted(() => ({ value: true }));
+
 vi.mock("../../hooks/use-aura-capabilities", () => ({
   useAuraCapabilities: () => ({
-    isMobileClient: true,
+    isMobileClient: mockMobileClient.value,
     isPhoneLayout: true,
     isMobileLayout: true,
     features: {
@@ -271,7 +273,7 @@ vi.mock("../../components/PanelSearch", () => ({
 vi.mock("../../components/HostSettingsModal", () => ({
   HostSettingsModal: () => null,
 }));
-vi.mock("../../components/MobileThemeToggleButton", () => ({
+vi.mock("../theme/MobileThemeToggleButton", () => ({
   MobileThemeToggleButton: () => <button aria-label="Switch theme (currently dark)" data-testid="mobile-theme-toggle" />,
 }));
 vi.mock("../../shared/lib/host-config", () => ({
@@ -328,8 +330,9 @@ function renderMobile(path: InitialEntry | InitialEntry[] = "/projects") {
           <Route path="/projects/settings" element={<div>Settings route</div>} />
           <Route path="/profile" element={<div>Profile settings destination</div>} />
           <Route path="/agents" element={<div>Agents</div>} />
-          <Route path="/agents/:agentId" element={<div>Agent details</div>} />
+          <Route path="/agents/:agentId" element={<div>Agent chat</div>} />
           <Route path="/feed" element={<div>Feed</div>} />
+          <Route path="/chat" element={<div>Chat destination</div>} />
           <Route path="/projects" element={<div>Projects</div>} />
           <Route path="*" element={<div>Fallback</div>} />
         </Route>
@@ -409,20 +412,32 @@ describe("MobileShell", () => {
     expect(screen.queryByRole("button", { name: "Open workspace" })).not.toBeInTheDocument();
   });
 
-  it("shows a back button on standalone mobile agent details routes", () => {
+  it("returns from standalone mobile agent details to the shared chat", () => {
     mockActiveApp.id = "agents";
     mockActiveApp.label = "Agents";
+    renderMobile("/agents/agent-1?view=details");
+
+    expect(screen.getByRole("button", { name: "Back to agent chat" })).toBeInTheDocument();
+  });
+
+  it("renders a standalone agent route as the persistent shared chat", () => {
+    mockActiveApp.id = "agents";
+    mockActiveApp.label = "Agents";
+
     renderMobile("/agents/agent-1");
 
+    expect(screen.getByTestId("conversation-surface-host-stub")).toBeInTheDocument();
+    expect(screen.queryByTestId("mobile-agent-details-view")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Back to agent library" })).toBeInTheDocument();
   });
 
-  it("shows create action on the standalone mobile agent library route", () => {
+  it("shows create action on the standalone tablet library with a desktop user agent", () => {
+    mockMobileClient.value = false;
     mockActiveApp.id = "agents";
     mockActiveApp.label = "Agents";
     renderMobile("/agents");
 
-    expect(screen.getByRole("button", { name: "Create Remote Agent" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create Agent" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Open workspace" })).not.toBeInTheDocument();
   });
 
@@ -440,9 +455,10 @@ describe("MobileShell", () => {
     mockActiveApp.id = "agents";
     mockActiveApp.label = "Agents";
 
-    renderMobile("/agents/agent-1");
+    renderMobile("/agents/agent-1?view=details");
 
     expect(screen.getByTestId("mobile-agent-details-view")).toBeInTheDocument();
+    expect(screen.getByTestId("conversation-surface-host-stub")).toBeInTheDocument();
     expect(screen.queryByTestId("main-panel")).not.toBeInTheDocument();
   });
 
@@ -541,6 +557,31 @@ describe("MobileShell", () => {
   it("hides project tabs on the attach-existing route", () => {
     renderMobile("/projects/proj-1/agents/attach");
     expect(screen.queryByRole("navigation", { name: "Project sections" })).not.toBeInTheDocument();
+  });
+
+  it("returns to Chat from a project and closes the drawer", async () => {
+    drawers.navOpen = true;
+    renderMobile("/projects/proj-1/files");
+    await userEvent.setup().click(within(screen.getByRole("navigation", { name: "Main navigation" })).getByRole("button", { name: "Chat" }));
+    expect(screen.getByText("Chat destination")).toBeInTheDocument();
+    expect(drawers.closeDrawers).toHaveBeenCalledOnce();
+  });
+
+  it("marks Chat as current without requiring a selected project", () => {
+    drawers.navOpen = true;
+    renderMobile("/chat");
+    expect(screen.getByRole("button", { name: "Chat" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("opens project creation directly from the project drawer", async () => {
+    drawers.navOpen = true;
+    renderMobile("/chat");
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "New Project" }));
+
+    expect(openNewProjectModal).toHaveBeenCalledOnce();
+    expect(screen.getByTestId("main-panel")).toHaveTextContent("Projects");
+    expect(drawers.closeDrawers).toHaveBeenCalledOnce();
   });
 
   it("keeps project drawer focused on switching agents and projects", () => {

@@ -376,6 +376,8 @@ mod tests {
         let agent_event_listener = Arc::new(crate::agent_events::AgentEventListener::new(100));
         agent_event_listener.spawn(event_broadcast.subscribe());
         let channel_service = Arc::new(aura_os_channels::ChannelService::new(store.clone()));
+        let push_notifications =
+            Arc::new(crate::push_notifications::PushNotificationService::disabled(store.clone()));
 
         (
             AppState {
@@ -408,6 +410,7 @@ mod tests {
                 live_streams: crate::live_streams::LiveStreamRegistry::from_env(),
                 event_broadcast,
                 event_hub,
+                desktop_relays: Arc::new(crate::desktop_relay::DesktopRelayRegistry::new()),
                 loop_registry,
                 require_zero_pro: false,
                 remote_only: false,
@@ -438,6 +441,7 @@ mod tests {
                 public_rate_limiter: crate::handlers::public::RateLimiter::new(),
                 public_demo_agent_id: Arc::new(tokio::sync::OnceCell::new()),
                 mixpanel: None,
+                push_notifications,
                 channel_service,
                 telegram_bot_username: Arc::new(tokio::sync::OnceCell::new()),
             },

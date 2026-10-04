@@ -5,6 +5,7 @@ import { EventType, type AuraEvent } from "../../shared/types/aura-events";
 import type { StreamRefs, StreamSetters } from "../../shared/types/stream";
 import { makeRefs, makeSetters } from "../stream/handlers.test-helpers";
 import { buildStreamHandler } from "./build-stream-handler";
+import { useToolApprovalStore } from "../../stores/tool-approval-store";
 
 const {
   mockGetLoopStatus,
@@ -83,6 +84,49 @@ function makeHandler(
 describe("buildStreamHandler", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useToolApprovalStore.setState({ prompts: {} });
+  });
+
+  it("surfaces live approval prompts on the project chat partition", () => {
+    const handler = makeHandler(makeRefs(), makeSetters());
+
+    handler.onEvent(event(EventType.ToolApprovalPrompt, {
+      request_id: "approval-1",
+      tool_name: "write_file",
+      args: { path: "src/main.ts" },
+      agent_id: "agent-1",
+      remember_options: ["once"],
+    }));
+
+    expect(useToolApprovalStore.getState().prompts["project-1:agent-inst-1"])
+      .toMatchObject({ request_id: "approval-1", tool_name: "write_file" });
+
+    handler.onEvent(event(EventType.ToolApprovalResolved, {
+      request_id: "approval-1",
+    }));
+
+    expect(useToolApprovalStore.getState().prompts["project-1:agent-inst-1"])
+      .toBeUndefined();
+  });
+
+  it("routes a retry rollback without losing earlier text or tool cards", () => {
+    const refs = makeRefs();
+    const setters = makeSetters();
+    const handler = makeHandler(refs, setters);
+    refs.streamBuffer.current = "Earlier.failed 😀";
+    refs.timeline.current = [
+      { kind: "text", content: "Earlier.", id: "earlier" },
+      { kind: "tool", toolCallId: "done", id: "tool" },
+      { kind: "text", content: "failed 😀", id: "failed" },
+    ];
+    handler.onEvent(event(EventType.Progress, {
+      stage: "stream_reset",
+      reset_text_bytes: new TextEncoder().encode("failed 😀").length,
+      reset_thinking_bytes: 0,
+    }));
+    expect(refs.streamBuffer.current).toBe("Earlier.");
+    expect(refs.timeline.current).toHaveLength(2);
+    expect(refs.timeline.current[1].kind).toBe("tool");
   });
 
   it("routes chat tool retry and terminal failure events into the stream reducers", () => {

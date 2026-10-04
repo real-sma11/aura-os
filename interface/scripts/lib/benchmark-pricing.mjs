@@ -17,6 +17,12 @@ const ANTHROPIC_MODEL_PRICING_PER_MTOK = {
     cacheWrite: 12.5,
     cacheRead: 1,
   },
+  "claude-opus-5-5": {
+    input: 4,
+    output: 20,
+    cacheWrite: 5,
+    cacheRead: 0.2,
+  },
   "claude-opus-5": {
     input: 5,
     output: 25,
@@ -132,11 +138,29 @@ export function sonnet5PricingAt(_at = new Date()) {
 }
 
 const OPENAI_MODEL_PRICING_PER_MTOK = {
+  "gpt-6-astra": {
+    input: 10,
+    output: 50,
+    cacheWrite: 12.5,
+    cacheRead: 1,
+  },
+  "gpt-6-sol": {
+    input: 2,
+    output: 10,
+    cacheWrite: 2.5,
+    cacheRead: 0.2,
+  },
+  "gpt-6-luna": {
+    input: 0.1,
+    output: 0.5,
+    cacheWrite: 0.125,
+    cacheRead: 0.01,
+  },
   "gpt-5.6-sol": {
-    input: 5,
-    output: 30,
-    cacheWrite: 6.25,
-    cacheRead: 0.5,
+    input: 4,
+    output: 20,
+    cacheWrite: 5,
+    cacheRead: 0.4,
   },
   "gpt-5.6-terra": {
     input: 2,
@@ -192,6 +216,12 @@ const OPENAI_MODEL_PRICING_PER_MTOK = {
 // publish a separate cache-write rate for these models, so cache writes use
 // the base input rate when a caller reports them.
 const XAI_MODEL_PRICING_PER_MTOK = {
+  "grok-4.7": {
+    input: 2,
+    output: 6,
+    cacheWrite: 2,
+    cacheRead: 0.5,
+  },
   "grok-4.6": {
     input: 2,
     output: 6,
@@ -228,6 +258,12 @@ const MOONSHOT_MODEL_PRICING_PER_MTOK = {
 };
 
 const FIREWORKS_MODEL_PRICING_PER_MTOK = {
+  "kimi-k3": {
+    input: 3,
+    output: 15,
+    cacheWrite: 3,
+    cacheRead: 0.3,
+  },
   "kimi-k2p7-code": {
     input: 0.95,
     output: 4.0,
@@ -313,16 +349,28 @@ const FIREWORKS_MODEL_PRICING_PER_MTOK = {
     cacheRead: 0.1,
   },
   "deepseek-v4-pro": {
-    input: 1.74,
-    output: 3.48,
-    cacheWrite: 1.74,
-    cacheRead: 0.145,
+    input: 1.32,
+    output: 3.96,
+    cacheWrite: 1.32,
+    cacheRead: 0.044,
+  },
+  "deepseek-v4-pro-0813": {
+    input: 1.32,
+    output: 3.96,
+    cacheWrite: 1.32,
+    cacheRead: 0.044,
   },
   "deepseek-v4-flash": {
-    input: 0.14,
-    output: 0.28,
-    cacheWrite: 0.14,
-    cacheRead: 0.028,
+    input: 0.22,
+    output: 0.66,
+    cacheWrite: 0.22,
+    cacheRead: 0.007,
+  },
+  "deepseek-v4-flash-0731": {
+    input: 0.22,
+    output: 0.66,
+    cacheWrite: 0.22,
+    cacheRead: 0.007,
   },
 };
 
@@ -420,6 +468,12 @@ function normalizeModelKey(model) {
   );
   if (fireworksRouter) return fireworksRouter[1];
   if (unprefixed === "gpt-5.6") return "gpt-5.6-sol";
+  const directOpenAiModels = {
+    "aura-gpt-6-astra": "gpt-6-astra",
+    "aura-gpt-6-sol": "gpt-6-sol",
+    "aura-gpt-6-luna": "gpt-6-luna",
+  };
+  if (directOpenAiModels[unprefixed]) return directOpenAiModels[unprefixed];
   const auraClaude = unprefixed.match(/^aura-(claude-.+)$/);
   if (auraClaude) return auraClaude[1];
   if (unprefixed === "aura-kimi-k3") return "kimi-k3";
@@ -442,6 +496,7 @@ function normalizeModelKey(model) {
   };
   if (auraDeepSeekModels[unprefixed]) return auraDeepSeekModels[unprefixed];
   const auraXaiModels = {
+    "aura-grok-4-7": "grok-4.7",
     "aura-grok-4-6": "grok-4.6",
     "aura-grok-4-5": "grok-4.5",
     "aura-grok-4-3": "grok-4.3",
@@ -471,7 +526,8 @@ function normalizeModelKey(model) {
 function inferProvider(model, provider) {
   if (
     typeof model === "string" &&
-    (model.trim().toLowerCase().startsWith("aura-deepseek-v4-") ||
+    (model.trim().toLowerCase() === "aura-kimi-k3" ||
+      model.trim().toLowerCase().startsWith("aura-deepseek-v4-") ||
       model.trim().toLowerCase().startsWith("accounts/fireworks/"))
   ) {
     return "fireworks";
@@ -768,7 +824,8 @@ function applyLongContextPricing(pricing, inputTokens) {
     inputTokens > 272_000 &&
     (pricing.model === "gpt-5.4" ||
       pricing.model === "gpt-5.5" ||
-      pricing.model.startsWith("gpt-5.6"));
+      pricing.model.startsWith("gpt-5.6") ||
+      pricing.model.startsWith("gpt-6"));
   const xaiLongContext = pricing.provider === "xai" && inputTokens >= 200_000;
   const googleLongContext =
     pricing.provider === "google" &&

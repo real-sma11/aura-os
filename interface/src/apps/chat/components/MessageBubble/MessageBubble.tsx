@@ -1,4 +1,6 @@
-import { Suspense, lazy, memo, useCallback, useMemo, useRef } from "react";
+import { Suspense, lazy, memo, useCallback, useMemo, useRef, type ReactNode } from "react";
+import { useAuraCapabilities } from "../../../../hooks/use-aura-capabilities";
+import { mobileErrorSummary } from "./mobile-error-summary";
 import { CornerDownLeft, FileText } from "lucide-react";
 import type {
   DisplayContentBlock,
@@ -74,6 +76,10 @@ interface Props {
    * shows Retry — it keeps its "Buy credits" action instead.
    */
   onRetry?: () => void;
+  /** Immediately retry a transport-deferred optimistic prompt. */
+  onRetryPendingDelivery?: () => void;
+  /** Remove a transport-deferred prompt from the durable retry queue. */
+  onCancelPendingDelivery?: () => void;
 }
 
 const FILE_PREFIX_RE = /^\[File:\s*(.+?)\]\n\n([\s\S]*)$/;
@@ -131,6 +137,17 @@ function FileAttachmentBlock({ text }: { text: string }) {
   );
 }
 
+function ErrorDiagnostics({ compact, message, children }: { compact: boolean; message?: string; children: ReactNode }) {
+  if (!compact) return <>{children}</>;
+  return (
+    <details className={styles.errorDiagnostics}>
+      <summary>Technical details</summary>
+      {message ? <pre>{message}</pre> : null}
+      {children}
+    </details>
+  );
+}
+
 export const MessageBubble = memo(function MessageBubble({
   message,
   isStreaming = false,
@@ -140,7 +157,10 @@ export const MessageBubble = memo(function MessageBubble({
   sessionId,
   errorAgentInfo,
   onRetry,
+  onRetryPendingDelivery,
+  onCancelPendingDelivery,
 }: Props) {
+  const { isMobileLayout } = useAuraCapabilities();
   const openBuyCredits = useUIModalStore((state) => state.openBuyCredits);
   const { openGallery } = useGallery();
   // Session-wide list published by `ChatMessageList`. When present we
@@ -251,6 +271,13 @@ export const MessageBubble = memo(function MessageBubble({
     showAssistantCopy ? assistantBubbleRef : noopRef,
     getAssistantMarkdown,
   );
+  const isUser = message.role === "user";
+  const isCrossAgentReply = isUser && !!message.fromAgentId;
+  const senderName = useAgentStore((state) =>
+    isCrossAgentReply
+      ? state.agents.find((a) => a.agent_id === message.fromAgentId)?.name
+      : undefined,
+  );
 
   // Error events (handleStreamError) carry the synthesized
   // string in `errorMessage` instead of `content`, so an
@@ -324,7 +351,7 @@ export const MessageBubble = memo(function MessageBubble({
         {message.errorMessage && (
           <div className={styles.errorMessageLine}>
             <span className={styles.errorMessageText}>
-              {message.errorMessage}
+              {isMobileLayout ? mobileErrorSummary(message.errorMessage, message.displayVariant) : message.errorMessage}
             </span>
             <CopyButton
               getText={copyErrorText}
@@ -334,6 +361,8 @@ export const MessageBubble = memo(function MessageBubble({
             />
           </div>
         )}
+        {(message.errorMessage || errorAgentInfo) && (
+          <ErrorDiagnostics compact={isMobileLayout} message={message.errorMessage}>
         {errorAgentInfo && (
           <div className={styles.errorAgentMeta}>
             <span className={styles.errorAgentMetaItem}>
@@ -357,6 +386,8 @@ export const MessageBubble = memo(function MessageBubble({
               </span>
             )}
           </div>
+        )}
+          </ErrorDiagnostics>
         )}
         <div className={styles.errorMetaRow}>
           {onRetry && !isInsufficientCreditsError && (
@@ -464,7 +495,6 @@ export const MessageBubble = memo(function MessageBubble({
     );
   };
 
-  const isUser = message.role === "user";
   const hasUserImages = isUser && imageBlocks.length > 0;
   const hasAssistantImages = !isUser && imageBlocks.length > 0;
   // For user messages we suppress the dark text bubble entirely when the
@@ -498,12 +528,6 @@ export const MessageBubble = memo(function MessageBubble({
   // local org knows about is already cached there); falls back to a
   // truncated id for cross-org senders the local store has never
   // fetched, so the badge always renders something useful.
-  const isCrossAgentReply = isUser && !!message.fromAgentId;
-  const senderName = useAgentStore((state) =>
-    isCrossAgentReply
-      ? state.agents.find((a) => a.agent_id === message.fromAgentId)?.name
-      : undefined,
-  );
   const senderLabel = isCrossAgentReply
     ? senderName?.trim() || truncateAgentId(message.fromAgentId ?? "")
     : null;
@@ -646,9 +670,46 @@ export const MessageBubble = memo(function MessageBubble({
           {isUser ? renderUserContent() : renderAssistantContent()}
         </div>
       )}
-      {isUser && message.deliveryStatus === "queued" && (
-        <div className={styles.deliveryStatus} role="status">
-          Queued
+      {isUser && message.deliveryStatus && (
+        <div className={styles.deliveryRow}>
+          <span className={styles.deliveryStatus} role="status">
+            {message.deliveryStatus === "queued"
+              ? "Queued"
+              : message.deliveryStatus === "sending"
+                ? "Sending…"
+                : message.deliveryStatus === "retrying"
+                  ? "Waiting to resend"
+                  : message.deliveryStatus === "unconfirmed"
+                    ? "Saved, agent run unconfirmed"
+                    : message.deliveryStatus === "executionFailed"
+                      ? "Saved, agent run failed"
+                  : message.deliveryStatus === "cancelled"
+                    ? "Canceled"
+                    : "Not sent"}
+          </span>
+          {message.deliveryStatus === "retrying" &&
+            (onRetryPendingDelivery || onCancelPendingDelivery) && (
+              <div className={styles.deliveryActions}>
+                {onRetryPendingDelivery && (
+                  <button
+                    type="button"
+                    className={styles.deliveryAction}
+                    onClick={onRetryPendingDelivery}
+                  >
+                    Retry now
+                  </button>
+                )}
+                {onCancelPendingDelivery && (
+                  <button
+                    type="button"
+                    className={styles.deliveryAction}
+                    onClick={onCancelPendingDelivery}
+                  >
+                    Stop retrying
+                  </button>
+                )}
+              </div>
+            )}
         </div>
       )}
       {showAssistantCopy && streamKey && (

@@ -153,6 +153,136 @@ describe("sendAgentEventStream", () => {
     expect(JSON.parse(init.body as string)).toEqual({ content: "hello", action: "chat" });
   });
 
+  it("correlates a persisted standalone command receipt", async () => {
+    const handler: StreamEventHandler = {
+      onEvent: vi.fn(),
+      onError: vi.fn(),
+      onAccepted: vi.fn(),
+    };
+
+    await sendAgentEventStream(
+      "a1",
+      "hello",
+      null,
+      undefined,
+      undefined,
+      handler,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "command-1",
+    );
+
+    const [, init, , , options] = streamSSE.mock.calls[0] as [
+      string,
+      RequestInit,
+      unknown,
+      unknown,
+      { onResponse: (response: Response) => void },
+    ];
+    expect(JSON.parse(init.body as string).client_command_id).toBe("command-1");
+    options.onResponse(new Response(null, {
+      headers: {
+        "x-aura-chat-persisted": "true",
+        "x-aura-chat-command-id": "command-1",
+        "x-aura-chat-session-id": "session-1",
+        "x-aura-chat-project-id": "project-1",
+      },
+    }));
+
+    expect(handler.onAccepted).toHaveBeenCalledWith({
+      commandId: "command-1",
+      sessionId: "session-1",
+      projectId: "project-1",
+      attachId: null,
+      replayed: false,
+    });
+  });
+
+  it("marks a replay and exposes its original live-stream receipt", async () => {
+    const handler: StreamEventHandler = {
+      onEvent: vi.fn(),
+      onError: vi.fn(),
+      onAccepted: vi.fn(),
+    };
+
+    await sendAgentEventStream(
+      "a1", "hello", null, undefined, undefined, handler,
+      undefined, undefined, undefined, false, "session-1", undefined,
+      undefined, undefined, "command-1", true, true, true,
+    );
+
+    const [, init, , , options] = streamSSE.mock.calls[0] as [
+      string,
+      RequestInit,
+      unknown,
+      unknown,
+      { onResponse: (response: Response) => void },
+    ];
+    expect((init.headers as Record<string, string>)["X-Aura-Command-Replay"]).toBe("1");
+    expect((init.headers as Record<string, string>)["X-Aura-Command-Previously-Accepted"]).toBe("1");
+    expect((init.headers as Record<string, string>)["X-Aura-Command-Resume"]).toBe("1");
+    options.onResponse(new Response(null, {
+      headers: {
+        "x-aura-chat-persisted": "true",
+        "x-aura-chat-command-id": "command-1",
+        "x-aura-chat-session-id": "session-1",
+        "x-aura-chat-project-id": "project-1",
+        "x-aura-attach-id": "attach-1",
+        "x-aura-chat-command-replayed": "true",
+        "x-aura-chat-execution-status": "unconfirmed",
+      },
+    }));
+    expect(handler.onAccepted).toHaveBeenCalledWith({
+      commandId: "command-1",
+      sessionId: "session-1",
+      projectId: "project-1",
+      attachId: "attach-1",
+      replayed: true,
+      executionStatus: "unconfirmed",
+    });
+  });
+
+  it("rejects a mismatched command receipt", async () => {
+    const handler: StreamEventHandler = {
+      onEvent: vi.fn(),
+      onError: vi.fn(),
+    };
+
+    await sendAgentEventStream(
+      "a1",
+      "hello",
+      null,
+      undefined,
+      undefined,
+      handler,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "command-1",
+    );
+
+    const options = streamSSE.mock.calls[0][4] as {
+      onResponse: (response: Response) => void;
+    };
+    expect(() => options.onResponse(new Response(null, {
+      headers: {
+        "x-aura-chat-persisted": "true",
+        "x-aura-chat-command-id": "another-command",
+      },
+    }))).toThrow("Aura could not confirm that this message was saved");
+  });
+
   it("includes attachments in body when provided", async () => {
     const handler: StreamEventHandler = {
       onEvent: vi.fn(),
@@ -237,6 +367,27 @@ describe("sendAgentEventStream", () => {
 
     sseCallbacks.onDone();
     expect(handler.onDone).toHaveBeenCalled();
+  });
+
+  it("keeps live tool approval prompts in the typed chat event pipeline", async () => {
+    const handler: StreamEventHandler = { onEvent: vi.fn(), onError: vi.fn() };
+    await sendAgentEventStream("a1", "hi", null, undefined, undefined, handler);
+    const callbacks = streamSSE.mock.calls[0][2] as {
+      onEvent: (type: string, data: unknown) => void;
+    };
+
+    callbacks.onEvent("tool_approval_prompt", {
+      request_id: "approval-1",
+      tool_name: "write_file",
+      args: { path: "src/main.ts" },
+      agent_id: "a1",
+      remember_options: ["once", "session"],
+    });
+
+    expect(handler.onEvent).toHaveBeenCalledWith(expect.objectContaining({
+      type: "tool_approval_prompt",
+      content: expect.objectContaining({ request_id: "approval-1", tool_name: "write_file" }),
+    }));
   });
 
   it("falls back to the tagged payload event type when the SSE event name is generic", async () => {

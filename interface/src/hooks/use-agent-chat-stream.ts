@@ -20,7 +20,10 @@ import {
   supportedReasoningEffort,
 } from "../lib/model-effort";
 import { STYLE_LOCK_SUFFIX } from "../constants/generation";
-import { buildUserChatMessage } from "./attachment-helpers";
+import {
+  buildUserChatMessage,
+  updateUserMessageDeliveryStatus,
+} from "./attachment-helpers";
 import type { Spec, Task } from "../shared/types";
 import type { AuraEvent } from "../shared/types/aura-events";
 import { EventType } from "../shared/types/aura-events";
@@ -28,8 +31,10 @@ import { useChatUIStore } from "../stores/chat-ui-store";
 import {
   useStreamCore,
   resetStreamBuffers,
+  resetStreamForReplay,
   handleThinkingDelta,
   handleTextDelta,
+  handleStreamReset,
   handleToolCallStarted,
   handleToolCallSnapshot,
   handleToolCall,
@@ -50,9 +55,13 @@ import {
 } from "../stores/context-usage-store";
 import { bumpEstimatedTokensThrottled } from "../stores/context-usage-throttle";
 import { useSessionsListStore } from "../stores/sessions-list-store";
-import { useMessageQueueStore } from "../stores/message-queue-store";
+import {
+  enqueueQueuedMessage,
+  removeQueuedMessage,
+} from "../stores/message-queue-store";
 import {
   createSetters,
+  ensureEntry,
   FRESH_SESSION_PLACEHOLDER,
   getLastEventAt,
   getStreamEntry,
@@ -73,6 +82,19 @@ import type { StreamCloseContext } from "../shared/observability/stream-breadcru
 import { recordStreamCloseReason } from "../shared/observability/stream-breadcrumbs";
 import { isStreamDroppedError } from "./stream/handlers/lifecycle";
 import { applySubagentStatus, registerSpawnedSubagent } from "./use-chat-stream/subagent-cards";
+import type { ToolApprovalPrompt } from "../shared/types/harness-protocol";
+import {
+  clearPendingToolApproval,
+  setPendingToolApproval,
+} from "../stores/tool-approval-store";
+import {
+  enqueueChatCommand,
+  markChatCommandAccepted,
+  markChatCommandExecutionFailed,
+  recordChatCommandFailure,
+  removeChatCommand,
+  shouldReplayChatCommandError,
+} from "../stores/chat-command-outbox";
 
 /**
  * Auto-retry budget for transient stream drops on the standalone-agent
@@ -248,21 +270,10 @@ export function useAgentChatStream({
         clientMessageId,
       };
 
-      // Auto-retry bookkeeping. The standalone surface reuses the
-      // project-chat send-control map purely for the `(autoRetryCount,
-      // retryTimer, inAutoRetry)` triad here (it already borrows
-      // `reattaching` from the same map in `tryReattachActiveTurn`).
-      // `inAutoRetry` is a one-shot set by the retry timer below: it
-      // tells this re-entry to skip re-appending the user bubble (it's
-      // already on screen) and bypass the in-flight queue guard, and it
-      // preserves the retry budget. A genuine new user send instead
-      // resets the budget so each prompt gets a fresh set of retries.
+      // Each explicit user send starts a fresh recovery budget.
       const sendControl = getPartitionSendControl(core.key);
-      const isAutoRetry = sendControl.inAutoRetry;
       sendControl.inAutoRetry = false;
-      if (!isAutoRetry) {
-        sendControl.autoRetryCount = 0;
-      }
+      sendControl.autoRetryCount = 0;
 
       // Phase 3: mutable holder for the in-flight partition key so
       // mid-turn `SessionReady` (fresh-canvas placeholder → real
@@ -271,6 +282,8 @@ export function useAgentChatStream({
       // captured closure. The handler updates `partitionState.key`
       // after the migrate helpers have moved the underlying state.
       const partitionState = { key: core.key };
+      let turnSessionId = sessionIdRef.current;
+      const reattachTurn = tryReattachActiveTurnRef.current;
       const getPartitionKey = (): string => partitionState.key;
       const partitionSetters = createSetters(getPartitionKey);
       const partitionAbortRef: MutableRefObject<AbortController | null> = {
@@ -289,11 +302,11 @@ export function useAgentChatStream({
       // gone past `STUCK_THRESHOLD_MS` without a wire event, mark the
       // entry with `pendingDueToStuckStream` so a Phase 2 banner can
       // offer "Send anyway" — Phase 1 just preserves the message.
-      if (getIsStreaming(getPartitionKey()) && !isAutoRetry) {
+      if (getIsStreaming(getPartitionKey())) {
         const lastEventAt = getLastEventAt(getPartitionKey());
         const isStuck =
           lastEventAt != null && Date.now() - lastEventAt >= STUCK_THRESHOLD_MS;
-        useMessageQueueStore.getState().enqueue(getPartitionKey(), {
+        await enqueueQueuedMessage(getPartitionKey(), {
           content,
           action,
           model: selectedModel ?? null,
@@ -308,20 +321,26 @@ export function useAgentChatStream({
 
       inFlightRef.current = true;
 
-      const userMsg = buildUserChatMessage(
-        trimmed,
-        attachments,
-        is3DModelStep ? "Generate 3D model" : undefined,
-        clientMessageId,
-      );
+      const userMsg: DisplaySessionEvent = {
+        ...buildUserChatMessage(
+          trimmed,
+          attachments,
+          is3DModelStep ? "Generate 3D model" : undefined,
+          clientMessageId,
+        ),
+        ...(!_generationMode ? { deliveryStatus: "sending" as const } : {}),
+      };
+      let commandAccepted = false;
+      let commandDeliveryClassified = false;
+      const updateCommandDelivery = (
+        status: DisplaySessionEvent["deliveryStatus"],
+      ) => {
+        partitionSetters.setEvents((events) =>
+          updateUserMessageDeliveryStatus(events, userMsg.clientId ?? userMsg.id, status),
+        );
+      };
 
-      // On an auto-retry re-entry the user's message is already in
-      // `events` from the original send, so re-appending would
-      // duplicate the bubble. The harness rehydrates the turn from
-      // session history by `aura_session_id`.
-      if (!isAutoRetry) {
-        partitionSetters.setEvents((prev) => [...prev, userMsg]);
-      }
+      partitionSetters.setEvents((prev) => [...prev, userMsg]);
       partitionSetters.setIsStreaming(true);
       resetStreamBuffers(refs, partitionSetters);
 
@@ -340,6 +359,7 @@ export function useAgentChatStream({
       // we are mid-stream.
       const migrateToSession = (newSessionId: string): void => {
         if (!agentId) return;
+        turnSessionId = newSessionId;
         const newKey = keyForAgentSession(agentId, newSessionId);
         if (newKey === partitionState.key) return;
         // The shared orchestrator handles every per-streamKey map
@@ -368,19 +388,12 @@ export function useAgentChatStream({
         sessionId: sessionIdRef.current ?? undefined,
       };
 
-      // Standalone-agent mirror of `useChatStream`'s `tryAutoRetry`.
-      // When a turn closes with a transient drop (`stream_stalled`,
-      // `turn_timeout`, harness-WS errors, SSE idle), silently recover
-      // instead of surfacing a hard error: reconnect-first (rejoin a
-      // still-live server turn), then fall back to re-issuing the last
-      // send. Bounded by `MAX_AUTO_RETRIES`. Returns `true` when it
-      // owns the recovery so the caller skips the error bubble.
+      // Rejoin the same turn after a transport drop. Never replay the POST:
+      // it writes another user message and may execute completed tools again.
       const tryAutoRetry = (error: unknown): boolean => {
         if (controller.signal.aborted) return false;
         const ctrl = getPartitionSendControl(getPartitionKey());
         if (ctrl.autoRetryCount >= MAX_AUTO_RETRIES) return false;
-        const replay = peekPartitionAgentReplay(getPartitionKey());
-        if (!replay?.lastSendArgs || !replay.sendFn) return false;
         ctrl.autoRetryCount += 1;
         const errorMessage =
           error instanceof Error
@@ -392,25 +405,15 @@ export function useAgentChatStream({
           { classified: "streamDropped", message: errorMessage, auto_retry: true },
           breadcrumbContext,
         );
-        // Drop any partial assistant state from the dead turn and swap
-        // the would-be error bubble for a transient "Reconnecting…"
-        // banner. `resetStreamBuffers` leaves `isStreaming` true so the
-        // indicator keeps showing while we back off.
-        resetStreamBuffers(refs, partitionSetters);
         partitionSetters.setProgressText("Reconnecting…");
         const delayMs = 1000 * ctrl.autoRetryCount;
         if (ctrl.retryTimer != null) clearTimeout(ctrl.retryTimer);
         ctrl.retryTimer = setTimeout(() => {
           ctrl.retryTimer = null;
           void (async () => {
-            // Reconnect-first: the harness keeps a turn alive on a
-            // passive SSE drop, so rejoin the live stream before
-            // re-POSTing. A server-side `stream_stalled` has no live
-            // turn to find, so reattach returns false and we resend.
-            const reattached = await tryReattachActiveTurnRef.current?.();
-            if (reattached) return;
-            ctrl.inAutoRetry = true;
-            await replayLastSend(getPartitionKey());
+            const reattached = await reattachTurn?.({ key: getPartitionKey(), sessionId: turnSessionId });
+            if (reattached || inFlightRef.current || ctrl.autoRetryCount === 0) return;
+            handleStreamError(refs, partitionSetters, error, breadcrumbContext);
           })();
         }, delayMs);
         return true;
@@ -445,6 +448,10 @@ export function useAgentChatStream({
             }
             case EventType.Progress: {
               const stage = event.content.stage;
+              if (stage === "stream_reset") {
+                handleStreamReset(refs, partitionSetters, event.content);
+                break;
+              }
               if (stage === "heartbeat") {
                 // Pure stuck-stream-watchdog ack from the server-side
                 // SSE heartbeat (`SSE_HEARTBEAT_INTERVAL` in
@@ -491,6 +498,15 @@ export function useAgentChatStream({
             case EventType.ToolCallStarted:
             case EventType.ToolUseStart:
               handleToolCallStarted(refs, partitionSetters, event.content as { id: string; name: string });
+              break;
+            case EventType.ToolApprovalPrompt:
+              setPendingToolApproval(getPartitionKey(), event.content as ToolApprovalPrompt);
+              markStreamProgress(getPartitionKey());
+              partitionSetters.setProgressText("Waiting for your approval");
+              break;
+            case EventType.ToolApprovalResolved:
+              clearPendingToolApproval(getPartitionKey(), event.content.request_id);
+              partitionSetters.setProgressText("Continuing…");
               break;
             case EventType.ToolCallSnapshot:
               handleToolCallSnapshot(refs, partitionSetters, event.content);
@@ -560,6 +576,7 @@ export function useAgentChatStream({
                 });
               }
               if (amc.stop_reason !== "tool_use") {
+                clearPendingToolApproval(getPartitionKey());
                 resetStreamBuffers(refs, partitionSetters);
                 // Clear the synchronous re-entry latch in lockstep with
                 // `isStreaming` so the `useChatPanelState` dequeue effect,
@@ -657,6 +674,7 @@ export function useAgentChatStream({
               handleStreamError(refs, partitionSetters, event.content, breadcrumbContext);
               break;
             case EventType.Error:
+              clearPendingToolApproval(getPartitionKey());
               inFlightRef.current = false;
               // Pass the FULL error payload (not just `.message`) so the
               // `code` survives — that's what classifies `stream_stalled`
@@ -676,6 +694,13 @@ export function useAgentChatStream({
         },
         onError: (error) => {
           if (controller.signal.aborted) return;
+          if (!_generationMode && !commandAccepted) {
+            commandDeliveryClassified = true;
+            updateCommandDelivery(
+              shouldReplayChatCommandError(error) ? "retrying" : "failed",
+            );
+            void recordChatCommandFailure(userMsg.clientId ?? userMsg.id, error);
+          }
           inFlightRef.current = false;
           // Transport-level drops (SSE idle timeout, WS close) recover
           // the same way as an in-band `Error` frame.
@@ -686,8 +711,44 @@ export function useAgentChatStream({
         },
         onDone: () => {
           if (controller.signal.aborted) return;
+          if (!_generationMode && !commandAccepted) {
+            commandDeliveryClassified = true;
+            updateCommandDelivery("retrying");
+            void recordChatCommandFailure(
+              userMsg.clientId ?? userMsg.id,
+              new Error("Agent stream ended before command acknowledgement"),
+            );
+          }
           inFlightRef.current = false;
           finalizeStream(refs, partitionSetters, partitionAbortRef, false, { breadcrumbContext });
+        },
+        onAccepted: (receipt) => {
+          if (receipt.commandId !== (userMsg.clientId ?? userMsg.id)) return;
+          if (
+            receipt.sessionId &&
+            receipt.sessionId !== lastNotifiedSessionIdRef.current
+          ) {
+            lastNotifiedSessionIdRef.current = receipt.sessionId;
+            migrateToSession(receipt.sessionId);
+            onSessionReadyRef.current?.(receipt.sessionId);
+            useSessionsListStore.getState().bumpVersion();
+          }
+          commandAccepted = true;
+          if (receipt.executionStatus === "completed") {
+            void removeChatCommand(receipt.commandId);
+          } else if (receipt.executionStatus === "failed") {
+            void markChatCommandExecutionFailed(receipt.commandId, receipt.sessionId);
+          } else {
+            void markChatCommandAccepted(
+              receipt.commandId,
+              receipt.executionStatus === "unconfirmed" ? "unconfirmed" : "attached",
+              receipt.sessionId,
+            );
+          }
+          updateCommandDelivery(
+            receipt.executionStatus === "unconfirmed" ? "unconfirmed" :
+              receipt.executionStatus === "failed" ? "executionFailed" : undefined,
+          );
         },
       };
 
@@ -922,6 +983,25 @@ export function useAgentChatStream({
             },
           };
         })();
+        const commandId = userMsg.clientId ?? userMsg.id;
+        await enqueueChatCommand({
+          surface: "agent",
+          commandId,
+          agentId,
+          projectId,
+          content: userMsg.content,
+          action,
+          model: modelForTurn,
+          attachments,
+          commands,
+          sessionId: shouldStartNewSession ? null : sessionIdRef.current,
+          council,
+          mixture,
+          originallyStartedNewSession: shouldStartNewSession,
+        });
+        if (clientMessageId?.startsWith("q-")) {
+          await removeQueuedMessage(getPartitionKey(), clientMessageId);
+        }
         await api.agents.sendEventStream(
           agentId,
           userMsg.content,
@@ -937,9 +1017,17 @@ export function useAgentChatStream({
           undefined,
           council,
           mixture,
+          commandId,
         );
       } catch (err: unknown) {
         if (err instanceof DOMException && err.name === "AbortError") return;
+        if (!_generationMode && !commandAccepted) {
+          commandDeliveryClassified = true;
+          updateCommandDelivery(
+            shouldReplayChatCommandError(err) ? "retrying" : "failed",
+          );
+          void recordChatCommandFailure(userMsg.clientId ?? userMsg.id, err);
+        }
         handleStreamError(refs, partitionSetters, err, breadcrumbContext);
       } finally {
         // `inFlightRef` is gated by the same "still my turn" sentinel
@@ -952,6 +1040,9 @@ export function useAgentChatStream({
         // otherwise clobber that new latch even though `abortRef`
         // has moved on.
         if (partitionAbortRef.current === controller) {
+          if (!_generationMode && !commandAccepted && !commandDeliveryClassified) {
+            updateCommandDelivery("failed");
+          }
           partitionSetters.setIsStreaming(false);
           controller.abort();
           partitionAbortRef.current = null;
@@ -969,18 +1060,17 @@ export function useAgentChatStream({
    * reducers a live turn uses. Discovery omits `agent_instance_id`
    * (standalone agents have none) and matches purely on `session_id`.
    *
-   * Dedup-safe: only runs on a clean partition buffer (fresh mount, or
-   * after `resetStreamBuffers`), so a replay-from-cursor cannot
-   * double-apply already-rendered content. Returns `true` when it
-   * attached to a live stream.
+   * Once discovery succeeds, rebuild the buffer from sequence zero.
+   * Returns true when attached to a live stream.
    */
-  const tryReattachActiveTurn = useCallback(async (): Promise<boolean> => {
+  const tryReattachActiveTurn = useCallback(async (recovery?: { key: string; sessionId: string | null }): Promise<boolean> => {
     if (!agentId || inFlightRef.current) return false;
-    const currentSessionId = sessionIdRef.current;
+    const currentSessionId = recovery ? recovery.sessionId : sessionIdRef.current;
     if (!currentSessionId) return false;
     const listFn = api.streams?.listActiveStreams;
     if (!listFn) return false;
-    const key = core.key;
+    const key = recovery?.key ?? core.key;
+    const refs = ensureEntry(key).refs;
     // Reuse the project-chat send-control map purely as a per-streamKey
     // `reattaching` latch so `useChatHistorySync` can gate its
     // firehose-driven refetch the same way for both surfaces.
@@ -1026,7 +1116,8 @@ export function useAgentChatStream({
       partitionState.key = newKey;
     };
 
-    resetStreamBuffers(refs, partitionSetters);
+    resetStreamForReplay(refs, partitionSetters);
+    ctrl.attachLastSeq = 0;
     partitionSetters.setIsStreaming(true);
     partitionAbortRef.current?.abort();
     const controller = new AbortController();
@@ -1053,6 +1144,10 @@ export function useAgentChatStream({
           }
           case EventType.Progress: {
             const stage = event.content.stage;
+            if (stage === "stream_reset") {
+              handleStreamReset(refs, partitionSetters, event.content);
+              break;
+            }
             if (stage === "heartbeat") {
               markStreamProgress(getPartitionKey());
               break;
@@ -1081,6 +1176,15 @@ export function useAgentChatStream({
           case EventType.ToolCallStarted:
           case EventType.ToolUseStart:
             handleToolCallStarted(refs, partitionSetters, event.content as { id: string; name: string });
+            break;
+          case EventType.ToolApprovalPrompt:
+            setPendingToolApproval(getPartitionKey(), event.content as ToolApprovalPrompt);
+            markStreamProgress(getPartitionKey());
+            partitionSetters.setProgressText("Waiting for your approval");
+            break;
+          case EventType.ToolApprovalResolved:
+            clearPendingToolApproval(getPartitionKey(), event.content.request_id);
+            partitionSetters.setProgressText("Continuing…");
             break;
           case EventType.ToolCallSnapshot:
             handleToolCallSnapshot(refs, partitionSetters, event.content);
@@ -1134,6 +1238,7 @@ export function useAgentChatStream({
                 );
             }
             if (amc.stop_reason !== "tool_use") {
+              clearPendingToolApproval(getPartitionKey());
               resetStreamBuffers(refs, partitionSetters);
               inFlightRef.current = false;
               partitionSetters.setIsStreaming(false);
@@ -1152,6 +1257,7 @@ export function useAgentChatStream({
             break;
           }
           case EventType.Error:
+            clearPendingToolApproval(getPartitionKey());
             inFlightRef.current = false;
             handleStreamError(refs, partitionSetters, event.content.message, breadcrumbContext);
             break;
@@ -1288,7 +1394,7 @@ export function useAgentChatStream({
   const stopStreaming = useCallback(() => {
     inFlightRef.current = false;
     if (agentId) {
-      api.agents.cancelTurn(agentId).catch(() => {});
+      api.agents.cancelTurn(agentId, sessionIdRef.current).catch(() => {});
     }
     core.baseStopStreaming();
   }, [agentId, core.baseStopStreaming]);

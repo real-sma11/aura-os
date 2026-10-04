@@ -31,6 +31,7 @@ import {
 import {
   useStreamCore,
   resetStreamBuffers,
+  resetStreamForReplay,
   handleStreamError,
   getIsStreaming,
 } from "../use-stream-core";
@@ -42,25 +43,31 @@ import {
   keyForProjectSession,
 } from "../stream/store";
 import { STUCK_THRESHOLD_MS } from "../stream/use-stream-health";
-import { useMessageQueueStore } from "../../stores/message-queue-store";
-import { buildUserChatMessage } from "../attachment-helpers";
+import {
+  enqueueQueuedMessage,
+  removeQueuedMessage,
+} from "../../stores/message-queue-store";
+import {
+  buildUserChatMessage,
+  updateUserMessageDeliveryStatus,
+} from "../attachment-helpers";
 import { buildStreamHandler } from "./build-stream-handler";
 import {
   getPartitionSendControl,
   type LastSendArgs,
 } from "./partition-send-control";
 import type { ActiveStreamSummary } from "../../shared/api/streams";
+import {
+  enqueueChatCommand,
+  markChatCommandAccepted,
+  markChatCommandExecutionFailed,
+  recordChatCommandFailure,
+  removeChatCommand,
+  shouldReplayChatCommandError,
+} from "../../stores/chat-command-outbox";
 
-// Phase 2 auto-retry plumbing. When a chat turn dies mid-stream
-// because the harness WS dropped (or the SSE idle watchdog fires),
-// we silently re-issue the last user message on a fresh harness
-// session — the harness rebuilds context from `aura_session_id` in
-// storage. Bounded to `MAX_AUTO_RETRIES` to avoid hammering a
-// genuinely-down upstream. The counter resets on every successfully
-// completed turn (see `onAssistantTurnCompleted`), so this bounds
-// *consecutive* failed retries, not a session lifetime. Raised from 2
-// to 4 so a flaky long session (the repeated-manual-retry symptom)
-// recovers on its own instead of stranding the user on a red banner.
+// Recover transport drops by rejoining the existing turn. A new POST would
+// persist the prompt again and rerun tools; only explicit user sends may do that.
 const MAX_AUTO_RETRIES = 4;
 
 interface UseChatStreamOptions {
@@ -95,7 +102,7 @@ interface UseChatStreamOptions {
   safeWorkspace?: boolean;
 }
 
-/** Captured partition-of-record. The send and any auto-retry replay
+/** Captured partition-of-record. The send and any stream recovery
  *  fired by it always write to THIS partition's slot, even if the
  *  hook's `core.key` has since changed because the panel swapped
  *  agents. */
@@ -103,6 +110,7 @@ interface CapturedPartition {
   key: string;
   projectId: string;
   instanceId: string;
+  sessionId: string | null;
 }
 
 export function useChatStream({
@@ -186,11 +194,7 @@ export function useChatStream({
     }
   }, [projectId, agentInstanceId, core.key]);
 
-  // Forward ref to `tryReattachActiveTurn` (defined after `performSend`
-  // so it can reference `performSendRef` for its re-POST fallback).
-  // `performSend`'s auto-retry timer reads this to prefer rejoining a
-  // still-live server turn before re-issuing the POST. Initialised to
-  // `null`; assigned via an effect once the callback exists.
+  // Recovery callbacks always rejoin the originating session.
   const tryReattachActiveTurnRef = useRef<
     ((captured: CapturedPartition) => Promise<boolean>) | null
   >(null);
@@ -198,10 +202,7 @@ export function useChatStream({
   /**
    * Core send routine. Always writes to the OWNING partition's slot
    * (specified by `captured`) regardless of which partition the panel
-   * is currently rendering. Both the user-facing `sendMessage` and the
-   * auto-retry timer route through here so a transient SSE drop on
-   * agent A recovers cleanly even after the panel has switched to
-   * agent B.
+   * is currently rendering. Only explicit user sends enter this routine.
    */
   const performSend = useCallback(
     async (args: LastSendArgs, captured: CapturedPartition) => {
@@ -263,7 +264,7 @@ export function useChatStream({
         const lastEventAt = getLastEventAt(getPartitionKey());
         const isStuck =
           lastEventAt != null && Date.now() - lastEventAt >= STUCK_THRESHOLD_MS;
-        useMessageQueueStore.getState().enqueue(getPartitionKey(), {
+        await enqueueQueuedMessage(getPartitionKey(), {
           content: args.content,
           action: args.action ?? null,
           model: args.selectedModel ?? null,
@@ -277,21 +278,9 @@ export function useChatStream({
         return;
       }
 
-      // A user-initiated send (not the auto-retry timer firing) resets
-      // the Phase 2 retry budget. Otherwise a user that exhausted the
-      // budget once would never get a retry on their next message
-      // even after a clean break.
-      const isAutoRetry = ctrl.inAutoRetry;
+      // Each explicit user send starts a fresh recovery budget.
       ctrl.inAutoRetry = false;
-      if (!isAutoRetry) {
-        ctrl.autoRetryCount = 0;
-      }
-
-      // Capture every successful entry so the Phase 2 auto-retry path
-      // can re-issue the exact same call after a transient WS drop.
-      // Snapshot BEFORE the empty-content guard because the retry
-      // needs the original payload regardless of whether the user
-      // typed text vs. relied on attachments.
+      ctrl.autoRetryCount = 0;
       ctrl.lastSendArgs = args;
 
       const {
@@ -324,23 +313,29 @@ export function useChatStream({
 
       ctrl.inFlight = true;
 
-      const userMsg = buildUserChatMessage(
-        trimmed,
-        attachments,
-        action === "generate_specs"
-          ? "Generate specs for this project"
-          : is3DModelStep
-            ? "Generate 3D model"
-            : undefined,
-        clientMessageId,
-      );
-      // On an auto-retry, the user's bubble is already on screen from
-      // the original send — only the assistant turn is being re-issued
-      // — so re-appending it here would duplicate the question. The
-      // partial assistant buffer was already discarded in `tryAutoRetry`.
-      if (!isAutoRetry) {
-        partitionSetters.setEvents((prev) => [...prev, userMsg]);
-      }
+      const userMsg = {
+        ...buildUserChatMessage(
+          trimmed,
+          attachments,
+          action === "generate_specs"
+            ? "Generate specs for this project"
+            : is3DModelStep
+              ? "Generate 3D model"
+              : undefined,
+          clientMessageId,
+        ),
+        ...(!_generationMode ? { deliveryStatus: "sending" as const } : {}),
+      };
+      let commandAccepted = false;
+      let commandDeliveryClassified = false;
+      const updateCommandDelivery = (
+        status: (typeof userMsg)["deliveryStatus"] | undefined,
+      ) => {
+        partitionSetters.setEvents((events) =>
+          updateUserMessageDeliveryStatus(events, userMsg.clientId ?? userMsg.id, status),
+        );
+      };
+      partitionSetters.setEvents((prev) => [...prev, userMsg]);
       partitionSetters.setIsStreaming(true);
       sidekickRef.current.setAgentStreaming(capturedInstanceId, true);
       resetStreamBuffers(partitionRefs, partitionSetters);
@@ -391,8 +386,6 @@ export function useChatStream({
         if (controller.signal.aborted) return false;
         if (ctrl.currentController?.signal.aborted) return false;
         if (ctrl.autoRetryCount >= MAX_AUTO_RETRIES) return false;
-        const replayArgs = ctrl.lastSendArgs;
-        if (!replayArgs) return false;
         ctrl.autoRetryCount += 1;
         // Phase 5 wiring: emit the auto-retry breadcrumb BEFORE
         // scheduling the timer so a future telemetry handler observes
@@ -411,37 +404,16 @@ export function useChatStream({
           breadcrumbContext,
         );
         const delayMs = 1000 * ctrl.autoRetryCount;
-        // Discard any partial assistant state from the dropped turn
-        // so the retry produces a clean assistant bubble. The user's
-        // own message remains on screen because it's already in
-        // `events` and the retry skips re-appending it.
-        resetStreamBuffers(partitionRefs, partitionSetters);
-        // Swap the would-be error bubble for a transient "Reconnecting"
-        // banner. The next send will rehydrate from session history
-        // (the harness picks up by `aura_session_id`).
+        // Keep partial work until reattachment succeeds or history recovery
+        // finishes. An absent stream is not permission to restart the turn.
         partitionSetters.setProgressText("Reconnecting…");
-        // We can't fire the resend synchronously because the current
-        // call is still on the stack and `inFlight` /
-        // `setIsStreaming(true)` will fight a re-entrant invocation.
-        // Defer past the surrounding `finally` so the latch is clear
-        // by the time the retry runs. The replay always uses the
-        // captured-partition path so it lands on the originating
-        // partition's slot even if the panel has since switched to a
-        // different agent.
         if (ctrl.retryTimer != null) clearTimeout(ctrl.retryTimer);
         ctrl.retryTimer = setTimeout(() => {
           ctrl.retryTimer = null;
           void (async () => {
-            // Reconnect-first: the harness keeps the turn alive on a
-            // passive SSE drop (Part A drop-guard), so try to rejoin
-            // the still-live server stream before re-issuing the POST.
-            // `resetStreamBuffers` above left this partition clean, so a
-            // replay-from-cursor is dup-free. Only fall back to the
-            // re-POST when no live stream is found.
             const reattached = await tryReattachActiveTurnRef.current?.(captured);
-            if (reattached) return;
-            ctrl.inAutoRetry = true;
-            void performSendRef.current?.(replayArgs, captured);
+            if (reattached || ctrl.inFlight || ctrl.autoRetryCount === 0) return;
+            handleStreamError(partitionRefs, partitionSetters, error, breadcrumbContext);
           })();
         }, delayMs);
         return true;
@@ -463,13 +435,17 @@ export function useChatStream({
         // store reads/writes.
         onPartitionMigrated: (newKey) => {
           partitionState.key = newKey;
+          captured.key = newKey;
         },
         setProgressText: partitionSetters.setProgressText,
         sidekickRef,
         projectCtxRef,
         pendingSpecIdsRef: pendingSpecIdsShim,
         pendingTaskIdsRef: pendingTaskIdsShim,
-        onSessionReady: (id) => onSessionReadyRef.current?.(id),
+        onSessionReady: (id) => {
+          captured.sessionId = id;
+          onSessionReadyRef.current?.(id);
+        },
         onAssistantTurnCompleted: () => {
           ctrl.autoRetryCount = 0;
         },
@@ -501,14 +477,54 @@ export function useChatStream({
         },
         onError: (error) => {
           if (controller.signal.aborted) return;
+          if (!_generationMode && !commandAccepted) {
+            commandDeliveryClassified = true;
+            updateCommandDelivery(
+              shouldReplayChatCommandError(error) ? "retrying" : "failed",
+            );
+            void recordChatCommandFailure(userMsg.clientId ?? userMsg.id, error);
+          }
           innerHandler.onError(error);
         },
         onDone: innerHandler.onDone
           ? () => {
               if (controller.signal.aborted) return;
+              if (!_generationMode && !commandAccepted) {
+                commandDeliveryClassified = true;
+                updateCommandDelivery("retrying");
+                void recordChatCommandFailure(
+                  userMsg.clientId ?? userMsg.id,
+                  new Error("Agent stream ended before command acknowledgement"),
+                );
+              }
               innerHandler.onDone?.();
             }
           : undefined,
+        onAccepted: (receipt) => {
+          if (receipt.commandId !== (userMsg.clientId ?? userMsg.id)) return;
+          if (receipt.sessionId && receipt.sessionId !== captured.sessionId) {
+            innerHandler.onEvent({
+              type: EventType.SessionReady,
+              content: { session_id: receipt.sessionId, tools: [], skills: [] },
+            } as unknown as import("../../shared/types/aura-events").AuraEvent);
+          }
+          commandAccepted = true;
+          if (receipt.executionStatus === "completed") {
+            void removeChatCommand(receipt.commandId);
+          } else if (receipt.executionStatus === "failed") {
+            void markChatCommandExecutionFailed(receipt.commandId, receipt.sessionId);
+          } else {
+            void markChatCommandAccepted(
+              receipt.commandId,
+              receipt.executionStatus === "unconfirmed" ? "unconfirmed" : "attached",
+              receipt.sessionId,
+            );
+          }
+          updateCommandDelivery(
+            receipt.executionStatus === "unconfirmed" ? "unconfirmed" :
+              receipt.executionStatus === "failed" ? "executionFailed" : undefined,
+          );
+        },
       };
 
       try {
@@ -659,10 +675,6 @@ export function useChatStream({
         }
 
         const modelForTurn = _generationMode ? null : selectedModel;
-        // On an auto-retry call, surface the attempt number to the
-        // server so it can bump `client_auto_retry_streamdropped`.
-        // First sends pass `undefined` so no header is set.
-        const clientRetryAttempt = isAutoRetry ? ctrl.autoRetryCount : undefined;
         // AURA Council fan-out for the project/instance chat — mirrors
         // the standalone agent path in `use-agent-chat-stream`. Resolved
         // from the live council store at send time (not capture time) so
@@ -728,6 +740,27 @@ export function useChatStream({
             },
           };
         })();
+        const commandId = userMsg.clientId ?? userMsg.id;
+        await enqueueChatCommand({
+          surface: "project",
+          commandId,
+          projectId: capturedProjectId,
+          agentInstanceId: capturedInstanceId,
+          content: userMsg.content,
+          action,
+          model: modelForTurn,
+          attachments,
+          commands,
+          sessionId: shouldStartNewSession ? null : sessionIdRef.current,
+          council,
+          mixture,
+          agentMentions,
+          safeWorkspace: safeWorkspaceRef.current,
+          originallyStartedNewSession: shouldStartNewSession,
+        });
+        if (clientMessageId?.startsWith("q-")) {
+          await removeQueuedMessage(getPartitionKey(), clientMessageId);
+        }
         await api.sendEventStream(
           capturedProjectId,
           capturedInstanceId,
@@ -740,14 +773,22 @@ export function useChatStream({
           commands,
           shouldStartNewSession,
           shouldStartNewSession ? null : sessionIdRef.current,
-          clientRetryAttempt,
+          undefined,
           council,
           mixture,
           agentMentions,
           safeWorkspaceRef.current,
+          commandId,
         );
       } catch (err: unknown) {
         if (err instanceof DOMException && err.name === "AbortError") return;
+        if (!_generationMode && !commandAccepted) {
+          commandDeliveryClassified = true;
+          updateCommandDelivery(
+            shouldReplayChatCommandError(err) ? "retrying" : "failed",
+          );
+          void recordChatCommandFailure(userMsg.clientId ?? userMsg.id, err);
+        }
         handleStreamError(partitionRefs, partitionSetters, err, breadcrumbContext);
       } finally {
         // Partition-scoped finalization sentinel. The legacy
@@ -768,6 +809,9 @@ export function useChatStream({
         // microtask-deferred `finally` would clobber the new send's
         // latch.
         if (ctrl.currentController === controller) {
+          if (!_generationMode && !commandAccepted && !commandDeliveryClassified) {
+            updateCommandDelivery("failed");
+          }
           partitionSetters.setIsStreaming(false);
           sidekickRef.current.setAgentStreaming(capturedInstanceId, false);
           controller.abort();
@@ -790,12 +834,6 @@ export function useChatStream({
     [],
   );
 
-  // Mirror the live `performSend` identity into a ref so the
-  // auto-retry timer can call the current closure even though
-  // `tryAutoRetry` was scheduled from an older invocation.
-  const performSendRef = useRef(performSend);
-  useEffect(() => { performSendRef.current = performSend; }, [performSend]);
-
   /**
    * Rejoin an in-flight chat (or chat-driven spec-gen) turn for this
    * partition's pinned session by reattaching to the server's
@@ -803,14 +841,9 @@ export function useChatStream({
    * pipeline a live turn uses — so reattached deltas / tool cards /
    * thinking render identically.
    *
-   * Dedup-safe by construction: this only ever runs when the local
-   * partition buffer is clean (fresh mount, or right after
-   * `resetStreamBuffers` in the auto-retry path). Because the attach
-   * SSE is the SOLE source of per-delta content (the firehose carries
-   * lifecycle only), a clean-buffer replay-from-cursor cannot
-   * double-apply content the client already rendered. Returns `true`
-   * when it found and attached to a live stream (caller should skip
-   * any re-POST fallback), `false` otherwise.
+   * Once discovery succeeds, rebuild the buffer from sequence zero so
+   * reattachment neither duplicates nor drops previously rendered output.
+   * Returns true when attached to a live stream, false otherwise.
    */
   const tryReattachActiveTurn = useCallback(
     async (captured: CapturedPartition): Promise<boolean> => {
@@ -823,7 +856,7 @@ export function useChatStream({
       // A local turn is already live / being sent on this partition, or
       // a reattach is already in flight — leave it alone.
       if (ctrl.inFlight || ctrl.reattaching) return false;
-      const currentSessionId = sessionIdRef.current;
+      const currentSessionId = captured.sessionId;
       // No pinned session id ⇒ nothing to match on (fresh canvas first
       // send goes through `sendMessage`, not reattach).
       if (!currentSessionId) return false;
@@ -860,9 +893,8 @@ export function useChatStream({
       };
 
       ctrl.inFlight = true;
-      // Clean slate ⇒ dup-free replay. Do NOT re-append the user bubble
-      // (it's already in history/events — same guard as `isAutoRetry`).
-      resetStreamBuffers(partitionRefs, partitionSetters);
+      // Rebuild assistant output; the user message is already in history.
+      resetStreamForReplay(partitionRefs, partitionSetters);
       ctrl.pendingSpecIds = [];
       ctrl.pendingTaskIds = [];
       partitionSetters.setIsStreaming(true);
@@ -873,6 +905,7 @@ export function useChatStream({
       const controller = new AbortController();
       ctrl.currentController = controller;
       ctrl.activeAttachId = match.attach_id;
+      ctrl.attachLastSeq = 0;
 
       const partitionAbortRef: MutableRefObject<AbortController | null> = {
         get current() { return ctrl.currentController; },
@@ -889,15 +922,13 @@ export function useChatStream({
 
       // If the reattached SSE itself gives up (after its own internal
       // resume budget), recover the same way the live turn does:
-      // re-discover the live stream, else re-POST the captured args.
-      const onMaybeReconnect = (): boolean => {
+      // re-discover the live stream without resubmitting the user prompt.
+      const onMaybeReconnect = (error: unknown): boolean => {
         if (controller.signal.aborted) return false;
         if (ctrl.currentController?.signal.aborted) return false;
         if (ctrl.autoRetryCount >= MAX_AUTO_RETRIES) return false;
         ctrl.autoRetryCount += 1;
-        resetStreamBuffers(partitionRefs, partitionSetters);
         partitionSetters.setProgressText("Reconnecting…");
-        const replayArgs = ctrl.lastSendArgs;
         const delayMs = 1000 * ctrl.autoRetryCount;
         if (ctrl.retryTimer != null) clearTimeout(ctrl.retryTimer);
         ctrl.retryTimer = setTimeout(() => {
@@ -905,13 +936,8 @@ export function useChatStream({
           void (async () => {
             const reattached = await tryReattachActiveTurnRef.current?.(captured);
             if (reattached) return;
-            // No live stream remains; only the auto-retry path (which
-            // captured `lastSendArgs`) can re-issue. A bare mount-driven
-            // reattach with no captured send simply gives up here and
-            // lets the post-stream history refetch converge.
-            if (!replayArgs) return;
-            ctrl.inAutoRetry = true;
-            void performSendRef.current?.(replayArgs, captured);
+            if (ctrl.inFlight || ctrl.autoRetryCount === 0) return;
+            handleStreamError(partitionRefs, partitionSetters, error, breadcrumbContext);
           })();
         }, delayMs);
         return true;
@@ -927,13 +953,17 @@ export function useChatStream({
         coreKey: capturedKey,
         onPartitionMigrated: (newKey) => {
           partitionState.key = newKey;
+          captured.key = newKey;
         },
         setProgressText: partitionSetters.setProgressText,
         sidekickRef,
         projectCtxRef,
         pendingSpecIdsRef: pendingSpecIdsShim,
         pendingTaskIdsRef: pendingTaskIdsShim,
-        onSessionReady: (id) => onSessionReadyRef.current?.(id),
+        onSessionReady: (id) => {
+          captured.sessionId = id;
+          onSessionReadyRef.current?.(id);
+        },
         onAssistantTurnCompleted: () => {
           ctrl.autoRetryCount = 0;
         },
@@ -1037,6 +1067,7 @@ export function useChatStream({
       key,
       projectId,
       instanceId: agentInstanceId,
+      sessionId: sessionIdRef.current,
     };
     void tryReattachActiveTurnRef.current?.(captured);
   }, [projectId, agentInstanceId, sessionId, core.key]);
@@ -1071,6 +1102,7 @@ export function useChatStream({
         key: core.key,
         projectId,
         instanceId: agentInstanceId,
+        sessionId: sessionIdRef.current,
       };
       await performSend(args, captured);
     },
@@ -1093,7 +1125,11 @@ export function useChatStream({
     // mode turn leaves the slot held until the 90s SSE idle timeout
     // and the next send appears to "time out" with no error surfaced.
     if (projectId && agentInstanceId) {
-      api.cancelInstanceTurn(projectId, agentInstanceId).catch(() => {});
+      api.cancelInstanceTurn(
+        projectId,
+        agentInstanceId,
+        sessionIdRef.current,
+      ).catch(() => {});
     }
     // The per-partition send-control refactor moved the controller
     // actually wired into the fetch off `streamMetaMap[key].abort`

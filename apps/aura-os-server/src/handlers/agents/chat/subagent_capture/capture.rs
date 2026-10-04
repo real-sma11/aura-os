@@ -35,7 +35,7 @@ pub(super) async fn capture_spawned_subagent(ctx: &SubagentCaptureCtx, info: Spa
         return;
     };
     let child_ctx = build_persist_ctx(ctx, sub_session_id);
-    if let Err(error) = persist_user_message(&child_ctx, &info.prompt, &None).await {
+    if let Err(error) = persist_user_message(&child_ctx, &info.prompt, &None, None).await {
         warn!(
             %error,
             child_run_id = %info.child_run_id,
@@ -89,6 +89,7 @@ fn build_persist_ctx(ctx: &SubagentCaptureCtx, session_id: SessionId) -> ChatPer
     ChatPersistCtx {
         storage: ctx.storage.clone(),
         jwt: ctx.jwt.clone(),
+        user_id: ctx.user_id.clone(),
         session_id,
         project_agent_id: ctx.project_agent_id.clone(),
         project_id: ctx.project_id.clone(),

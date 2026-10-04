@@ -150,19 +150,18 @@ describe("AgentConversationRow", () => {
     expect(screen.queryByText("Rose")).not.toBeInTheDocument();
   });
 
-  it("prefers personality over last message in metadata-only mode", () => {
+  it("prefers the latest shared message over static profile metadata", () => {
     render(
       <AgentConversationRow
         agent={baseAgent}
         lastMessage={lastMessage}
-        showMetadataOnly
         isSelected={false}
         {...noopHandlers}
       />,
     );
 
-    expect(screen.getByText("Plans features end to end.")).toBeInTheDocument();
-    expect(screen.queryByText("Latest chat reply")).not.toBeInTheDocument();
+    expect(screen.getByText("Latest chat reply")).toBeInTheDocument();
+    expect(screen.queryByText("Plans features end to end.")).not.toBeInTheDocument();
   });
 
   it("forwards the busy prop to the avatar", () => {
@@ -187,5 +186,65 @@ describe("AgentConversationRow", () => {
       />,
     );
     expect(screen.getByTestId("agent-avatar")).toHaveAttribute("data-busy", "true");
+  });
+
+  it("prioritizes a pending approval over stale preview metadata", () => {
+    render(
+      <AgentConversationRow
+        agent={baseAgent}
+        lastMessage={lastMessage}
+        isSelected={false}
+        attention={{
+          kind: "approval",
+          count: 1,
+          label: "write file",
+          route: "/agents/agent-1?session=session-1",
+        }}
+        activeRun={{ route: "/agents/agent-1?session=session-1" }}
+        {...noopHandlers}
+      />,
+    );
+
+    expect(screen.getByText("Needs you")).toBeInTheDocument();
+    expect(screen.getByText("Approval needed · write file")).toBeInTheDocument();
+    expect(screen.queryByText("Working")).not.toBeInTheDocument();
+    expect(screen.getByRole("button")).toHaveAttribute("data-agent-attention", "approval");
+  });
+
+  it("surfaces a desktop-started run when no approval is pending", () => {
+    render(
+      <AgentConversationRow
+        agent={baseAgent}
+        lastMessage={lastMessage}
+        isSelected={false}
+        busy
+        activeRun={{ route: "/agents/agent-1?session=session-1" }}
+        {...noopHandlers}
+      />,
+    );
+
+    expect(screen.getByText("Working")).toBeInTheDocument();
+    expect(screen.getByText("Agent is working · Tap to follow")).toBeInTheDocument();
+    expect(screen.getByRole("button")).toHaveAttribute("data-agent-activity", "running");
+  });
+
+  it("surfaces active child agents without exposing their private identities", () => {
+    render(
+      <AgentConversationRow
+        agent={baseAgent}
+        lastMessage={lastMessage}
+        isSelected={false}
+        busy
+        activeRun={{
+          route: "/agents/agent-1?session=session-1",
+          activity: "Coordinating agents",
+          activeSubagentCount: 2,
+        }}
+        {...noopHandlers}
+      />,
+    );
+
+    expect(screen.getByText("3 agents working")).toBeInTheDocument();
+    expect(screen.getByText("2 child agents active · Tap to follow")).toBeInTheDocument();
   });
 });

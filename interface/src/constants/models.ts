@@ -150,8 +150,16 @@ const OPENAI_EFFORTS: ModelEffort[] = [
   "xhigh",
 ];
 
-/** GPT-5.6 adds a distinct native `max` tier above `xhigh`. */
+/** GPT-5.6 and GPT-6 Sol/Luna add a native `max` tier above `xhigh`. */
 const GPT_5_6_EFFORTS: ModelEffort[] = [...OPENAI_EFFORTS, "max"];
+/** GPT-6 Astra starts at `low`; unlike Sol and Luna it has no `none` tier. */
+const GPT_6_ASTRA_EFFORTS: ModelEffort[] = [
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+];
 
 /**
  * GPT-5.4 uses the same native `none`/`low`/`medium`/`high`/`xhigh`
@@ -183,7 +191,7 @@ const GEMINI_FLASH_EFFORTS: ModelEffort[] = ["low", "medium", "high"];
  * The router maps Aura's `minimal` UI tier to xAI's `none` value.
  */
 const XAI_EFFORTS: ModelEffort[] = ["minimal", "low", "medium", "high"];
-/** Grok 4.6 adds xAI's native `xhigh` tier above the default `high`. */
+/** Grok 4.7/4.6 add xAI's native `xhigh` tier above the default `high`. */
 const XAI_GROK_4_6_EFFORTS: ModelEffort[] = [
   "low",
   "medium",
@@ -211,8 +219,8 @@ const LEGACY_HIDDEN_CHAT_MODELS: ModelOption[] = [
 
 /**
  * Chat models, grouped by vendor (Anthropic, OpenAI, xAI, DeepSeek AI,
- * Moonshot AI, MiniMax, Z.ai, Alibaba Cloud, Google) and newest-first within each
- * vendor. The picker's section order is controlled separately by
+ * Moonshot AI, MiniMax, Z.ai, and Google) and newest-first within each vendor.
+ * The picker's section order is controlled separately by
  * {@link MODEL_VENDOR_ORDER} (which surfaces Google ahead of DeepSeek), so
  * this array's grouping need not match the on-screen order. The default
  * chat model is pinned via {@link DEFAULT_CHAT_MODEL_ID} rather than this
@@ -235,21 +243,22 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
       "Anthropic's latest Fable for demanding reasoning and long-horizon agentic work, with a 1M-token context window.",
     featured: true,
   },
+  // ── Anthropic ───────────────────────────────────────────────
   {
-    id: "aura-claude-mythos-5-1",
-    label: "Mythos 5.1",
+    id: "aura-claude-opus-5-5",
+    label: "Opus 5.5",
     tier: "opus",
     mode: "chat",
     vendor: "anthropic",
-    creditMultiplier: 10,
+    creditMultiplier: 4,
     contextWindow: 1_000_000,
     efforts: ANTHROPIC_XHIGH_EFFORTS,
-    defaultEffort: "high",
+    defaultEffort: "medium",
     provider: "Anthropic",
     description:
-      "Anthropic's limited-access Project Glasswing model, sharing Fable 5.1's long-horizon capabilities and 1M-token context window.",
+      "Anthropic's latest Opus, with adaptive thinking, five effort levels, and a 1M-token context window.",
+    featured: true,
   },
-  // ── Anthropic ───────────────────────────────────────────────
   {
     id: "aura-claude-fable-5",
     label: "Fable 5",
@@ -371,12 +380,56 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
   },
   // ── OpenAI ──────────────────────────────────────────────────
   {
+    id: "aura-gpt-6-astra",
+    label: "GPT-6 Astra",
+    tier: "gpt",
+    mode: "chat",
+    vendor: "openai",
+    creditMultiplier: 12,
+    contextWindow: 1_050_000,
+    efforts: GPT_6_ASTRA_EFFORTS,
+    defaultEffort: "medium",
+    provider: "OpenAI",
+    description:
+      "OpenAI's highest-capability GPT-6 tier for the most demanding reasoning and agentic work.",
+    featured: true,
+  },
+  {
+    id: "aura-gpt-6-sol",
+    label: "GPT-6 Sol",
+    tier: "gpt",
+    mode: "chat",
+    vendor: "openai",
+    creditMultiplier: 2.4,
+    contextWindow: 1_050_000,
+    efforts: GPT_5_6_EFFORTS,
+    defaultEffort: "medium",
+    provider: "OpenAI",
+    description:
+      "OpenAI's balanced GPT-6 workhorse for coding and everyday professional work.",
+    featured: true,
+  },
+  {
+    id: "aura-gpt-6-luna",
+    label: "GPT-6 Luna",
+    tier: "gpt",
+    mode: "chat",
+    vendor: "openai",
+    creditMultiplier: 0.12,
+    contextWindow: 1_050_000,
+    efforts: GPT_5_6_EFFORTS,
+    defaultEffort: "medium",
+    provider: "OpenAI",
+    description:
+      "OpenAI's fastest, most affordable GPT-6 tier for easier and high-volume tasks.",
+  },
+  {
     id: "aura-gpt-5-6-sol",
     label: "GPT-5.6 Sol",
     tier: "gpt",
     mode: "chat",
     vendor: "openai",
-    creditMultiplier: 6,
+    creditMultiplier: 4.8,
     contextWindow: 1_050_000,
     efforts: GPT_5_6_EFFORTS,
     defaultEffort: "medium",
@@ -486,6 +539,21 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
   },
   // ── xAI ─────────────────────────────────────────────────────
   {
+    id: "aura-grok-4-7",
+    label: "Grok 4.7",
+    tier: "opus",
+    mode: "chat",
+    vendor: "xai",
+    creditMultiplier: 1.44,
+    contextWindow: 500_000,
+    efforts: XAI_GROK_4_6_EFFORTS,
+    defaultEffort: "high",
+    provider: "xAI",
+    description:
+      "xAI's latest flagship for coding, agentic tasks, and knowledge work, with xHigh reasoning and a 500K context window.",
+    featured: true,
+  },
+  {
     id: "aura-grok-4-6",
     label: "Grok 4.6",
     tier: "opus",
@@ -565,7 +633,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     contextWindow: 1_048_576,
     provider: "DeepSeek AI",
     description:
-      "Fast, ultra-low-cost DeepSeek variant for high-volume tasks with a 1M context window.",
+      "Fast, low-cost DeepSeek variant for high-volume tasks with a 1M context window.",
   },
   // ── Moonshot AI ─────────────────────────────────────────────
   {
@@ -620,18 +688,6 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     description:
       "Open-weight MiniMax model offering low-cost, high-throughput generation with a 512K context window.",
   },
-  {
-    id: "aura-minimax-m2-7",
-    label: "MiniMax M2.7",
-    tier: "haiku",
-    mode: "chat",
-    vendor: "minimax",
-    creditMultiplier: 0.15,
-    contextWindow: 196_608,
-    provider: "MiniMax",
-    description:
-      "Open-weight MiniMax model offering low-cost, high-throughput generation with a 196K context window.",
-  },
   // ── z.ai ────────────────────────────────────────────────────
   {
     id: "aura-glm-5-2",
@@ -645,31 +701,6 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     description:
       "Open-weight GLM model built for long-horizon agentic coding and engineering, with a 1M-token context window.",
   },
-  {
-    id: "aura-glm-5-1",
-    label: "GLM 5.1",
-    tier: "sonnet",
-    mode: "chat",
-    vendor: "zai",
-    creditMultiplier: 0.7,
-    contextWindow: 202_752,
-    provider: "Z.ai",
-    description:
-      "Open-weight GLM reasoning model with strong agentic and tool-use performance and a 202K context window.",
-  },
-  // ── Qwen ────────────────────────────────────────────────────
-  {
-    id: "aura-qwen3-7-plus",
-    label: "Qwen3.7 Plus",
-    tier: "sonnet",
-    mode: "chat",
-    vendor: "qwen",
-    creditMultiplier: 0.3,
-    contextWindow: 262_144,
-    provider: "Alibaba Cloud",
-    description:
-      "Low-cost multimodal Qwen model with vision and video input and a 256K context window.",
-  },
   // ── Google (Gemini) ─────────────────────────────────────────
   {
     id: "aura-gemini-3-1-pro",
@@ -678,7 +709,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     mode: "chat",
     vendor: "google",
     creditMultiplier: 2.4,
-    contextWindow: 1_000_000,
+    contextWindow: 1_048_576,
     efforts: GEMINI_EFFORTS,
     defaultEffort: "medium",
     provider: "Google",
@@ -693,7 +724,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     mode: "chat",
     vendor: "google",
     creditMultiplier: 1.8,
-    contextWindow: 1_000_000,
+    contextWindow: 1_048_576,
     efforts: GEMINI_FLASH_EFFORTS,
     defaultEffort: "medium",
     provider: "Google",
@@ -707,7 +738,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     mode: "chat",
     vendor: "google",
     creditMultiplier: 0.6,
-    contextWindow: 1_000_000,
+    contextWindow: 1_048_576,
     efforts: GEMINI_FLASH_EFFORTS,
     defaultEffort: "medium",
     provider: "Google",
@@ -721,7 +752,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     mode: "chat",
     vendor: "google",
     creditMultiplier: 0.3,
-    contextWindow: 1_000_000,
+    contextWindow: 1_048_576,
     efforts: GEMINI_FLASH_EFFORTS,
     defaultEffort: "low",
     provider: "Google",
@@ -735,7 +766,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     mode: "chat",
     vendor: "google",
     creditMultiplier: 2,
-    contextWindow: 1_000_000,
+    contextWindow: 1_048_576,
     efforts: GEMINI_EFFORTS,
     defaultEffort: "medium",
     provider: "Google",
@@ -749,7 +780,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     mode: "chat",
     vendor: "google",
     creditMultiplier: 0.5,
-    contextWindow: 1_000_000,
+    contextWindow: 1_048_576,
     efforts: GEMINI_FLASH_EFFORTS,
     defaultEffort: "medium",
     provider: "Google",
@@ -763,7 +794,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     mode: "chat",
     vendor: "google",
     creditMultiplier: 0.08,
-    contextWindow: 1_000_000,
+    contextWindow: 1_048_576,
     efforts: GEMINI_FLASH_EFFORTS,
     defaultEffort: "low",
     provider: "Google",
@@ -1033,6 +1064,38 @@ const CHAT_MODELS: ModelOption[] = AVAILABLE_MODELS.filter(
 );
 
 /**
+ * Models removed from selection after production probes returned definitive
+ * upstream 404s. Keep their labels for existing conversation history without
+ * exposing them in pickers, defaults, or the marketing catalog.
+ */
+const RETIRED_CHAT_MODELS: ModelOption[] = [
+  {
+    id: "aura-claude-mythos-5-1",
+    label: "Mythos 5.1",
+    tier: "opus",
+    mode: "chat",
+  },
+  {
+    id: "aura-minimax-m2-7",
+    label: "MiniMax M2.7",
+    tier: "haiku",
+    mode: "chat",
+  },
+  {
+    id: "aura-glm-5-1",
+    label: "GLM 5.1",
+    tier: "sonnet",
+    mode: "chat",
+  },
+  {
+    id: "aura-qwen3-7-plus",
+    label: "Qwen3.7 Plus",
+    tier: "sonnet",
+    mode: "chat",
+  },
+];
+
+/**
  * Modality used by the marketing `/models` page. Chat models are
  * surfaced as `"text"` there (the page has no `"chat"` tab); the other
  * three modes map 1:1.
@@ -1090,6 +1153,7 @@ export function buildMarketingModelEntries(): MarketingModelEntry[] {
 const KNOWN_MODELS: ModelOption[] = [
   ...AVAILABLE_MODELS,
   ...LEGACY_HIDDEN_CHAT_MODELS,
+  ...RETIRED_CHAT_MODELS,
 ];
 
 const LEGACY_AURA_MODEL_IDS: Record<string, string> = {
@@ -1099,6 +1163,8 @@ const LEGACY_AURA_MODEL_IDS: Record<string, string> = {
   "aura-claude-fable-5": "aura-claude-fable-5",
   "claude-mythos-5-1": "aura-claude-mythos-5-1",
   "aura-claude-mythos-5-1": "aura-claude-mythos-5-1",
+  "claude-opus-5-5": "aura-claude-opus-5-5",
+  "aura-claude-opus-5-5": "aura-claude-opus-5-5",
   "claude-opus-5": "aura-claude-opus-5",
   "aura-claude-opus-5": "aura-claude-opus-5",
   "aura-claude-opus-4-6": "aura-claude-opus-4-6",
@@ -1115,6 +1181,12 @@ const LEGACY_AURA_MODEL_IDS: Record<string, string> = {
   "claude-haiku-4-5-20251001": "aura-claude-haiku-4-5",
   "aura-gpt-4.1": "aura-gpt-4.1",
   "gpt-4.1": "aura-gpt-4.1",
+  "gpt-6-astra": "aura-gpt-6-astra",
+  "aura-gpt-6-astra": "aura-gpt-6-astra",
+  "gpt-6-sol": "aura-gpt-6-sol",
+  "aura-gpt-6-sol": "aura-gpt-6-sol",
+  "gpt-6-luna": "aura-gpt-6-luna",
+  "aura-gpt-6-luna": "aura-gpt-6-luna",
   "gpt-5.6": "aura-gpt-5-6-sol",
   "gpt-5.6-sol": "aura-gpt-5-6-sol",
   "gpt-5.6-terra": "aura-gpt-5-6-terra",
@@ -1123,6 +1195,9 @@ const LEGACY_AURA_MODEL_IDS: Record<string, string> = {
   "gpt-5.4": "aura-gpt-5-4",
   "gpt-5.4-mini": "aura-gpt-5-4-mini",
   "gpt-5.4-nano": "aura-gpt-5-4-nano",
+  "aura-grok-4-7": "aura-grok-4-7",
+  "grok-4.7": "aura-grok-4-7",
+  "xai/grok-4.7": "aura-grok-4-7",
   "aura-grok-4-6": "aura-grok-4-6",
   "grok-4.6": "aura-grok-4-6",
   "xai/grok-4.6": "aura-grok-4-6",
@@ -1274,10 +1349,11 @@ export function defaultModelForAdapter(
   explicitDefault?: string | null,
 ): string {
   const models = availableModelsForAdapter(adapterType);
+  const selectableModels = [...models, ...LEGACY_HIDDEN_CHAT_MODELS];
   const normalizedExplicit = normalizeManagedModelId(explicitDefault?.trim());
   if (
     normalizedExplicit &&
-    KNOWN_MODELS.some((m) => m.id === normalizedExplicit)
+    selectableModels.some((m) => m.id === normalizedExplicit)
   ) {
     return normalizedExplicit;
   }

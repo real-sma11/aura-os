@@ -11,6 +11,7 @@ import type {
 import {
   clearAllPartitions,
   registerPartitionRegistry,
+  type PartitionMigrationOptions,
 } from "./partition-registry";
 
 /* ------------------------------------------------------------------ */
@@ -23,6 +24,9 @@ import {
 
 export interface StreamEntryState {
   isStreaming: boolean;
+  // Set only after the server successfully reports that a persisted
+  // in-flight turn no longer has a live, attachable execution.
+  interruptionReason: "runtime_restarted" | null;
   // True while streamed text is actively revealing word-by-word (i.e. the
   // displayed slice is still catching up to the buffered text). Drives the
   // cooking indicator: it shows whenever the turn is in flow but we are not
@@ -75,6 +79,7 @@ interface StreamStore {
 
 const INITIAL_ENTRY: StreamEntryState = {
   isStreaming: false,
+  interruptionReason: null,
   isWriting: false,
   events: [],
   streamingText: "",
@@ -340,6 +345,25 @@ export function getIsStreaming(key: string): boolean {
   return useStreamStore.getState().entries[key]?.isStreaming ?? false;
 }
 
+export function markStreamInterrupted(key: string): void {
+  ensureEntry(key);
+  touchEntry(key);
+  updateStreamEntry(key, {
+    isStreaming: false,
+    isWriting: false,
+    progressText: "",
+    stuckSince: null,
+    interruptionReason: "runtime_restarted",
+  });
+}
+
+export function clearStreamInterrupted(key: string): void {
+  const entry = getStreamEntry(key);
+  if (!entry?.interruptionReason) return;
+  touchEntry(key);
+  updateStreamEntry(key, { interruptionReason: null });
+}
+
 export function getThinkingDurationMs(key: string): number | null {
   return useStreamStore.getState().entries[key]?.thinkingDurationMs ?? null;
 }
@@ -492,6 +516,7 @@ export function createSetters(keyOrResolver: StreamKeyResolver): StreamSetters {
       if (next && !wasStreaming) {
         patch.lastEventAt = Date.now();
         patch.stuckSince = null;
+        patch.interruptionReason = null;
       }
       updateStreamEntry(key, patch);
     },
@@ -558,7 +583,8 @@ void resolveKey;
  * entry is dropped (the new key's entry is the authoritative one — the
  * fresh-canvas → real-id migration races with `useStreamCore`'s
  * `ensureEntry(newKey)` on re-render, but the in-flight data lives at
- * `oldKey` so this branch is rare).
+ * `oldKey` so this branch is rare). The orchestrator can override that
+ * policy when the source is actively streaming and the destination is idle.
  *
  * Migration covers:
  *   - the Zustand `useStreamStore.entries` slice (events, isStreaming,
@@ -575,7 +601,11 @@ void resolveKey;
  * kept for back-compat — vitest suites import it directly to pin the
  * per-map rekey semantics.
  */
-export function migrateStreamPartition(oldKey: string, newKey: string): void {
+export function migrateStreamPartition(
+  oldKey: string,
+  newKey: string,
+  options?: PartitionMigrationOptions,
+): void {
   if (oldKey === newKey) return;
 
   // Move the streamMeta (refs object reference + abort controller). We
@@ -585,7 +615,7 @@ export function migrateStreamPartition(oldKey: string, newKey: string): void {
   // meta would orphan those mutations.
   const oldMeta = streamMetaMap.get(oldKey);
   if (oldMeta) {
-    if (!streamMetaMap.has(newKey)) {
+    if (!streamMetaMap.has(newKey) || options?.replaceDestination) {
       const moved: StreamMeta = {
         key: newKey,
         refs: oldMeta.refs,
@@ -600,7 +630,7 @@ export function migrateStreamPartition(oldKey: string, newKey: string): void {
   useStreamStore.setState((s) => {
     const oldEntry = s.entries[oldKey];
     if (!oldEntry) return s;
-    if (s.entries[newKey]) {
+    if (s.entries[newKey] && !options?.replaceDestination) {
       const { [oldKey]: _drop, ...rest } = s.entries;
       void _drop;
       return { entries: rest };

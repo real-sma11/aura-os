@@ -1,12 +1,13 @@
 import { migrateAllPartitions } from "./partition-registry";
+import { getStreamEntry } from "./store";
 // Side-effect imports: each module below registers a
 // `PartitionRegistry` at load time. Importing them here guarantees
 // the full registry list is wired up by the time any caller invokes
 // `migrateChatPartition`, regardless of which module the consumer
 // reached for first.
-import "./store";
 import "./partition-state";
 import "../../stores/chat-ui-store";
+import "../../stores/tool-approval-store";
 
 /**
  * Re-key every per-streamKey map registered with the partition
@@ -51,5 +52,24 @@ import "../../stores/chat-ui-store";
  */
 export function migrateChatPartition(oldKey: string, newKey: string): void {
   if (oldKey === newKey) return;
-  migrateAllPartitions(oldKey, newKey);
+
+  // SessionReady can race with a render or prefetch that has already
+  // materialized the real-session lane. The per-registry migration contract
+  // normally lets an occupied destination win, but an idle placeholder at
+  // the destination is not authoritative over the source lane that is
+  // actively carrying the optimistic user bubble and the live response.
+  // Ask every registry to replace the idle destination so the migration
+  // moves the active lane (including its stable refs and send control) as one
+  // unit. If both lanes are active, retain the longstanding destination-wins
+  // behavior rather than clobbering a live turn.
+  const sourceEntry = getStreamEntry(oldKey);
+  const destinationEntry = getStreamEntry(newKey);
+  const replaceIdleDestination =
+    sourceEntry?.isStreaming &&
+    destinationEntry !== undefined &&
+    !destinationEntry.isStreaming;
+
+  migrateAllPartitions(oldKey, newKey, {
+    replaceDestination: replaceIdleDestination,
+  });
 }
